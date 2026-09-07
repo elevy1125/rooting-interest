@@ -645,22 +645,9 @@ function renderSide(side){
   el(side === "for" ? "emptyFor" : "emptyAgainst").hidden = rows.length > 0;
 
   var starts = rows.reduce(function(n, r){ return n + countOf(r, side); }, 0);
-  var total = 0, any = false, anyProj = false;
-  rows.forEach(function(r){
-    var mode = gameMode(r);
-    r.entries.forEach(function(e){
-      if(e.side !== side) return;
-      var v = shownValue(r, e, mode);
-      if(typeof v === "number"){
-        total += v; any = true;
-        if(mode === "pre") anyProj = true;
-      }
-    });
-  });
   el(side === "for" ? "forSub" : "againstSub").textContent =
     rows.length + " player" + (rows.length === 1 ? "" : "s") + " · " + starts +
-    " start" + (starts === 1 ? "" : "s") +
-    (any ? " · " + fmtPts(total) + " pts" + (anyProj ? " incl. proj" : "") : "");
+    " start" + (starts === 1 ? "" : "s");
 
   // sort arrows
   var s = state.sort[side];
