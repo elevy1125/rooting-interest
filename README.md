@@ -83,9 +83,10 @@ for 24 hours. "Refresh players" clears it. If storage is unavailable the app jus
 ## Structure
 
 ```
-index.html        markup
-css/styles.css    styling
-js/app.js         API calls, aggregation, rendering
+index.html            markup
+css/styles.css        styling
+js/app.js             API calls, aggregation, rendering
+favicon.svg           football icon (favicon.png / apple-touch-icon.png are rasterized from it)
 ```
 
 ## Notes
