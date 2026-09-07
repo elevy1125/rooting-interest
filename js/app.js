@@ -12,7 +12,7 @@ var DAY = 86400000;
 var POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DEF"];
 
 var el = function(id){ return document.getElementById(id); };
-var statusBox, statusText, bar, errBox, notesBox, results;
+var statusBox, statusText, bar, errBox, results;
 
 var state = {
   players: null,          // id -> [name, pos, team, injury]
@@ -154,7 +154,7 @@ function myRoster(rosters, userId){
 }
 
 function run(username, season, week){
-  var notes = [], userId, user, leagues;
+  var skipped = [], userId, user, leagues;
 
   return getJSON(API + "/user/" + encodeURIComponent(username)).then(function(u){
     if(!u || !u.user_id) throw new Error('No Sleeper user found named "' + username + '".');
@@ -210,13 +210,13 @@ function run(username, season, week){
       b.rosters.forEach(function(r){ rostersById[r.roster_id] = r; });
 
       var mine = myRoster(b.rosters, userId);
-      if(!mine){ notes.push(name + ": you don't have a roster in this league (skipped)."); return; }
+      if(!mine){ skipped.push({league:name, reason:"no roster in this league"}); return; }
 
       var myM = null, i;
       for(i = 0; i < b.matchups.length; i++){
         if(b.matchups[i].roster_id === mine.roster_id){ myM = b.matchups[i]; break; }
       }
-      if(!myM){ notes.push(name + ": no week " + week + " matchup posted yet (skipped)."); return; }
+      if(!myM){ skipped.push({league:name, reason:"no matchup posted"}); return; }
 
       var opps = b.matchups.filter(function(m){
         return m.matchup_id != null && m.matchup_id === myM.matchup_id && m.roster_id !== mine.roster_id;
@@ -225,11 +225,9 @@ function run(username, season, week){
       var myTeam = teamNameFor(mine, usersById);
       var myManager = (usersById[mine.owner_id] || {}).display_name || "";
       var myStarters = (myM.starters || []).filter(function(p){ return p && p !== "0"; });
-      if(!myStarters.length){ notes.push(name + ": your week " + week + " lineup is empty (skipped)."); return; }
+      if(!myStarters.length){ skipped.push({league:name, reason:"lineup not set"}); return; }
 
-      if(!opps.length){
-        notes.push(name + ": no opponent for week " + week + " (bye or unscheduled) — your starters still counted.");
-      }
+      if(!opps.length) skipped.push({league:name, reason:"no opponent scheduled", partial:true});
       counted++;
 
       var oppRoster = opps.length ? rostersById[opps[0].roster_id] : null;
@@ -253,7 +251,7 @@ function run(username, season, week){
     return {
       user:user,
       rows: Object.keys(byPlayer).map(function(k){ return byPlayer[k]; }),
-      notes:notes, leaguesTotal:leagues.length, leaguesCounted:counted,
+      skipped:skipped, leaguesTotal:leagues.length, leaguesCounted:counted,
       season:season, week:week
     };
   });
@@ -265,22 +263,41 @@ function countOf(row, side){ return side === "for" ? row.forCount : row.againstC
 function isBoth(row){ return row.forCount > 0 && row.againstCount > 0; }
 
 function renderSummary(m){
-  var totalFor = 0, totalAgainst = 0, both = 0;
-  state.rows.forEach(function(r){
-    totalFor += r.forCount; totalAgainst += r.againstCount;
-    if(isBoth(r)) both++;
-  });
+  var both = 0;
+  state.rows.forEach(function(r){ if(isBoth(r)) both++; });
+  var flagged = m.skipped || [];
+  var caption = flagged.length
+    ? '<em class="statnote" id="statnote">+' + flagged.length +
+      " without a matchup</em>"
+    : "";
+
   var stats = [
-    ["Week", m.week],
-    ["Leagues", m.leaguesCounted + (m.leaguesCounted !== m.leaguesTotal ? " / " + m.leaguesTotal : "")],
-    ["Unique players", state.rows.length],
-    ["Your starts", totalFor],
-    ["Opponent starts", totalAgainst],
-    ["On both sides", both]
+    ["Week", esc(m.week), ""],
+    ["Leagues", esc(m.leaguesCounted), caption],
+    ["Unique players", esc(state.rows.length), ""],
+    ["On both sides", esc(both), ""]
   ];
   el("summary").innerHTML = stats.map(function(s){
-    return '<div class="stat"><b>' + esc(s[1]) + '</b><span>' + esc(s[0]) + "</span></div>";
+    return '<div class="stat"><span>' + esc(s[0]) + "</span><b>" + s[1] + "</b>" + s[2] + "</div>";
   }).join("");
+
+  var box = el("skipped");
+  if(flagged.length){
+    box.innerHTML = "No matchup this week: " + flagged.map(function(s){
+      return '<span class="sk">' + esc(s.league) +
+        (s.reason === "no matchup posted" ? "" : " (" + esc(s.reason) + ")") + "</span>";
+    }).join(", ");
+    box.hidden = true;
+    var note = el("statnote");
+    note.addEventListener("click", function(){
+      box.hidden = !box.hidden;
+      note.classList.toggle("open", !box.hidden);
+    });
+  } else {
+    box.innerHTML = "";
+    box.hidden = true;
+  }
+
   el("foot").textContent = (m.user.display_name || m.user.username) + " · " + m.season +
     " season · data from the Sleeper API";
 }
@@ -325,16 +342,19 @@ function visibleRows(side){
 }
 
 function detailHTML(row, side, cols){
+  // The "for" table shows who you're up against; the "against" table doesn't need
+  // a column repeating your own team name on every row.
+  var showFacing = side === "for";
   var body = row.entries.filter(function(e){ return e.side === side; })
     .sort(function(a, b){ return a.league.localeCompare(b.league); })
     .map(function(e){
       return "<tr><td>" + esc(e.league) + "</td><td>" + esc(e.startedBy) +
         (e.manager ? ' <span style="color:var(--muted)">(' + esc(e.manager) + ")</span>" : "") +
-        "</td><td>" + esc(e.versus) + "</td></tr>";
+        "</td>" + (showFacing ? "<td>" + esc(e.versus) + "</td>" : "") + "</tr>";
     }).join("");
   return '<td class="details" colspan="' + cols + '"><div class="details-inner"><table class="sub">' +
-    "<thead><tr><th>League</th><th>" + (side === "for" ? "Your team" : "Opponent") +
-    "</th><th>Facing</th></tr></thead><tbody>" + body + "</tbody></table></div></td>";
+    "<thead><tr><th>League</th><th>" + (showFacing ? "Your team" : "Opponent") + "</th>" +
+    (showFacing ? "<th>Facing</th>" : "") + "</tr></thead><tbody>" + body + "</tbody></table></div></td>";
 }
 
 function rowHTML(r, side, cols){
@@ -367,10 +387,10 @@ function renderSide(side){
     });
     order.sort(function(a, b){ return posRank(a) - posRank(b) || a.localeCompare(b); });
     order.forEach(function(p){
-      var lineups = groups[p].reduce(function(n, r){ return n + countOf(r, side); }, 0);
+      var starts = groups[p].reduce(function(n, r){ return n + countOf(r, side); }, 0);
       html.push('<tr class="grp"><td colspan="' + cols + '">' + esc(p) +
         '<span class="gcount">' + groups[p].length + " player" + (groups[p].length === 1 ? "" : "s") +
-        " · " + lineups + " lineup" + (lineups === 1 ? "" : "s") + "</span></td></tr>");
+        " · " + starts + " start" + (starts === 1 ? "" : "s") + "</span></td></tr>");
       groups[p].forEach(function(r){ html.push(rowHTML(r, side, cols)); });
     });
   } else {
@@ -383,7 +403,7 @@ function renderSide(side){
   var starts = rows.reduce(function(n, r){ return n + countOf(r, side); }, 0);
   el(side === "for" ? "forSub" : "againstSub").textContent =
     rows.length + " player" + (rows.length === 1 ? "" : "s") + " · " + starts +
-    " lineup spot" + (starts === 1 ? "" : "s");
+    " start" + (starts === 1 ? "" : "s");
 
   // sort arrows
   var s = state.sort[side];
@@ -459,7 +479,7 @@ function wire(){
   });
 
   el("csv").addEventListener("click", function(){
-    var lines = [["Side", "Player", "Pos", "NFL", "Lineups", "League", "Started by", "Facing"]];
+    var lines = [["Side", "Player", "Pos", "NFL", "Starts", "League", "Started by", "Facing"]];
     ["for", "against"].forEach(function(side){
       visibleRows(side).forEach(function(r){
         r.entries.filter(function(e){ return e.side === side; }).forEach(function(e){
@@ -498,7 +518,7 @@ function wire(){
     if(!season || !week){ showError("Enter a season and a week."); return; }
 
     clearError();
-    notesBox.classList.remove("on");
+    el("skipped").hidden = true;
     results.classList.remove("on");
     el("go").disabled = true;
     state.open = {};
@@ -514,12 +534,6 @@ function wire(){
         clearStatus();
         if(!m.rows.length) showError("No starters found for week " + week + " in any of your leagues.");
         else renderAll(m);
-        if(m.notes.length){
-          notesBox.innerHTML = "<b>Notes</b><ul>" + m.notes.map(function(n){
-            return "<li>" + esc(n) + "</li>";
-          }).join("") + "</ul>";
-          notesBox.classList.add("on");
-        }
       })
       .catch(function(err){
         clearStatus();
@@ -533,7 +547,7 @@ function wire(){
 
 function init(){
   statusBox = el("status"); statusText = el("statusText"); bar = el("bar");
-  errBox = el("error"); notesBox = el("notes"); results = el("results");
+  errBox = el("error"); results = el("results");
   wire();
 
   try{

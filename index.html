@@ -34,11 +34,11 @@
     <div class="hint">Season and week default to the current NFL state. Nothing is stored anywhere but your own browser.</div>
     <div id="status"><span id="statusText"></span><div class="bar"><i id="bar"></i></div></div>
     <div class="error" id="error"></div>
-    <div class="notes" id="notes"></div>
   </div>
 
   <div id="results">
     <div class="summary" id="summary"></div>
+    <div class="skipped" id="skipped" hidden></div>
 
     <div class="toolbar">
       <input id="search" placeholder="Filter by player, team or league…">
@@ -65,7 +65,7 @@
                 <th data-key="name">Player</th>
                 <th data-key="pos" class="poscol">Pos</th>
                 <th data-key="team">NFL</th>
-                <th data-key="count" class="num" title="Number of your lineups this player is starting in">Lineups</th>
+                <th data-key="count" class="num" title="How many of your lineups this player is starting in">Starts</th>
               </tr>
             </thead>
             <tbody id="tbodyFor"></tbody>
@@ -86,7 +86,7 @@
                 <th data-key="name">Player</th>
                 <th data-key="pos" class="poscol">Pos</th>
                 <th data-key="team">NFL</th>
-                <th data-key="count" class="num" title="Number of opponent lineups this player is starting in">Lineups</th>
+                <th data-key="count" class="num" title="How many opponent lineups this player is starting in">Starts</th>
               </tr>
             </thead>
             <tbody id="tbodyAgainst"></tbody>

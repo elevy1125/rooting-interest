@@ -13,14 +13,17 @@ current week's matchup in each one, and tallies each starter:
 - **Both sides** — a yellow tag on players who show up in both tables, because you're rooting for and
   against them at the same time
 
-Click any row to expand the details: which league, the team name they're starting for, the manager, and
-who that team is facing.
+Click any row to expand the details: which league, which team is starting them, and the manager. On the
+"For me" side it also shows who that team is facing.
+
+Leagues that didn't contribute a matchup this week aren't counted in the league total — an asterisk on
+that number lists them on hover or click.
 
 ## Features
 
 - Side-by-side **For me / Against me** tables
 - **Grouped by position** (QB → RB → WR → TE → K → DEF, then everything else) — toggleable
-- Every column sortable, independently per table
+- Every column sortable, independently per table; counts are **starts** (one per league a player starts in)
 - Filter by position, search across players/NFL teams/league names
 - "Both sides only" view
 - CSV export of whatever is currently on screen
