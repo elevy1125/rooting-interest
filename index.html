@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rooting Interest</title>
-<meta name="description" content="See every starter in your Sleeper matchups this week — how many of your lineups they're in, and how many are playing against you.">
+<meta name="description" content="See every starter in your fantasy football matchups this week, across Sleeper and ESPN.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="favicon.png" sizes="32x32">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -14,14 +14,14 @@
 <div class="wrap">
   <header>
     <h1>Rooting Interest</h1>
-    <p>Every starter in your Sleeper matchups this week, across all your leagues — who you're rooting for, and who's rooting against you.</p>
+    <p>Every starter in your fantasy matchups this week, across all your leagues.</p>
   </header>
 
   <div class="card">
     <form id="form">
       <div class="field">
         <label for="username">Sleeper username</label>
-        <input id="username" placeholder="your username" autocomplete="off" spellcheck="false" required>
+        <input id="username" placeholder="your username" autocomplete="off" spellcheck="false">
       </div>
       <div class="field">
         <label for="season">Season</label>
@@ -35,12 +35,32 @@
       <button class="ghost" id="refresh" type="button" title="Clear the cached NFL player database and re-download it">Refresh players</button>
     </form>
     <div class="hint">Season and week default to the current NFL state. Nothing is stored anywhere but your own browser.</div>
+
+    <details class="espn" id="espnBox">
+      <summary>ESPN leagues <span class="count" id="espnCount"></span></summary>
+      <p class="espn-help">ESPN has no username lookup, so each league is added by its numeric ID —
+      the number in the league URL (<code>…leagueId=<b>1234567890</b></code>) — and you pick which
+      team is yours. Public leagues only: ESPN doesn't allow browser access to private ones.</p>
+      <div class="espn-add">
+        <input id="espnId" placeholder="league ID" inputmode="numeric" autocomplete="off">
+        <button class="ghost" id="espnAdd" type="button">Add league</button>
+        <span class="espn-msg" id="espnMsg"></span>
+      </div>
+      <ul class="espn-list" id="espnList"></ul>
+    </details>
     <div id="status"><span id="statusText"></span><div class="bar"><i id="bar"></i></div></div>
     <div class="error" id="error"></div>
   </div>
 
   <div id="results">
-    <div class="summary" id="summary"></div>
+    <div class="summary-row">
+      <div class="summary" id="summary"></div>
+      <div class="freshness">
+        <span class="updated" id="updated"></span>
+        <button class="ghost" id="refreshScores" type="button"
+          title="Re-pull live scores, game states and projections">Refresh scores</button>
+      </div>
+    </div>
     <div class="skipped" id="skipped" hidden></div>
 
     <div class="toolbar">
@@ -49,16 +69,27 @@
       <div class="chips">
         <span class="chip on" id="groupToggle" title="QB, RB, WR, TE first, then everyone else">Group by position</span>
         <span class="chip" id="bothToggle" title="Only players appearing on both sides of your matchups">Both sides only</span>
+        <span class="chip" id="leagueToggle" title="Choose which leagues count toward the tables">Leagues</span>
         <span class="chip" id="prioToggle" title="Choose which league's scoring the points column uses">Scoring priority</span>
       </div>
       <div class="spacer"></div>
       <div class="actions">
-        <span class="updated" id="updated"></span>
-        <button class="ghost" id="refreshScores" type="button"
-          title="Re-pull live scores, game states and projections">Refresh scores</button>
         <button class="ghost" id="expandAll" type="button">Expand all</button>
         <button class="ghost" id="csv" type="button">Export CSV</button>
       </div>
+    </div>
+
+    <div class="prio" id="leagueFilter" hidden>
+      <div class="prio-head">
+        <b>Leagues</b>
+        <span>Uncheck a league to leave it out of the tables below. Starts, points and
+        details all follow this.</span>
+      </div>
+      <div class="lf-bulk">
+        <button class="ghost" id="lfAll" type="button">Select all</button>
+        <button class="ghost" id="lfNone" type="button">Select none</button>
+      </div>
+      <ul class="lf-list" id="lfList"></ul>
     </div>
 
     <div class="prio" id="prio" hidden>

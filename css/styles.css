@@ -30,6 +30,33 @@ button.ghost{background:transparent}
 button.ghost:hover{border-color:var(--accent)}
 .hint{color:var(--muted);font-size:12px;margin-top:10px}
 
+.espn{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.espn summary{cursor:pointer;font-size:12px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);user-select:none}
+.espn summary:hover{color:var(--txt)}
+.espn summary .count{text-transform:none;letter-spacing:0}
+.espn-help{color:var(--muted);font-size:12px;margin:10px 0;max-width:76ch}
+.espn-help code{background:var(--panel2);border:1px solid var(--line);border-radius:4px;
+  padding:1px 5px;font-size:11px}
+.espn-add{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.espn-add #espnId{width:170px}
+.espn-msg{font-size:12px;color:var(--muted)}
+.espn-msg.bad{color:var(--agn)}
+.espn-list{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;
+  max-width:620px}
+.espn-list li{display:flex;align-items:center;gap:10px;background:var(--panel2);
+  border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.espn-list .el-name{flex:1;font-weight:600;font-size:13px}
+.espn-list .el-team{padding:5px 8px;font-size:12px;max-width:230px}
+.espn-list .el-warn{font-size:12px;color:var(--warn)}
+.espn-list .el-rm{padding:4px 9px;font-size:12px;background:transparent}
+.espn-list .el-rm:hover{border-color:var(--agn);color:var(--agn)}
+
+.plat{font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
+  padding:1px 4px;border-radius:4px;border:1px solid var(--line);color:var(--muted);
+  margin-left:7px;white-space:nowrap}
+.plat.espn{color:#d05a2a;border-color:rgba(208,90,42,.45)}
+
 #status{margin-top:16px;color:var(--muted);display:none}
 #status.on{display:block}
 .bar{height:4px;background:var(--panel2);border-radius:99px;overflow:hidden;margin-top:8px}
@@ -44,7 +71,9 @@ button.ghost:hover{border-color:var(--accent)}
 
 #results{display:none;margin-top:22px}
 #results.on{display:block}
-.summary{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.summary-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px}
+.freshness{margin-left:auto;display:flex;gap:10px;align-items:center}
+.summary{display:flex;flex-wrap:wrap;gap:10px}
 .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
   padding:9px 14px 11px;min-width:104px}
 .stat > span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
@@ -83,6 +112,17 @@ button.ghost:hover{border-color:var(--accent)}
 .prio-list .moves{display:flex;gap:4px}
 .prio-list .mv{padding:1px 7px;font-size:12px;line-height:1.4;border-radius:6px}
 .prio-list .mv:disabled{opacity:.3;cursor:default}
+
+.chip.open,.chip.filtered{border-color:var(--accent);color:var(--accent)}
+.lf-bulk{display:flex;gap:8px;margin-top:12px}
+.lf-bulk button{padding:4px 10px;font-size:12px}
+.lf-list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;
+  max-width:520px}
+.lf-list li{background:var(--panel2);border:1px solid var(--line);border-radius:8px}
+.lf-list label{display:flex;align-items:center;gap:9px;padding:7px 10px;cursor:pointer;
+  font-size:13px}
+.lf-list input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;padding:0}
+.lf-list .lname{font-weight:600}
 
 .panes{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
 .pane{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
