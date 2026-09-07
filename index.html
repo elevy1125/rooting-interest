@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rooting Interest</title>
+<meta name="description" content="See every starter in your Sleeper matchups this week — how many of your lineups they're in, and how many are playing against you.">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Rooting Interest</h1>
+    <p>Every starter in your Sleeper matchups this week, across all your leagues — who you're rooting for, and who's rooting against you.</p>
+  </header>
+
+  <div class="card">
+    <form id="form">
+      <div class="field">
+        <label for="username">Sleeper username</label>
+        <input id="username" placeholder="your username" autocomplete="off" spellcheck="false" required>
+      </div>
+      <div class="field">
+        <label for="season">Season</label>
+        <input id="season" type="number" min="2017" max="2099" step="1">
+      </div>
+      <div class="field">
+        <label for="week">Week</label>
+        <input id="week" type="number" min="1" max="22" step="1">
+      </div>
+      <button class="primary" id="go" type="submit">Load matchups</button>
+      <button class="ghost" id="refresh" type="button" title="Clear the cached NFL player database and re-download it">Refresh players</button>
+    </form>
+    <div class="hint">Season and week default to the current NFL state. Nothing is stored anywhere but your own browser.</div>
+    <div id="status"><span id="statusText"></span><div class="bar"><i id="bar"></i></div></div>
+    <div class="error" id="error"></div>
+    <div class="notes" id="notes"></div>
+  </div>
+
+  <div id="results">
+    <div class="summary" id="summary"></div>
+
+    <div class="toolbar">
+      <input id="search" placeholder="Filter by player, team or league…">
+      <div class="chips" id="posChips"></div>
+      <div class="chips">
+        <span class="chip on" id="groupToggle" title="QB, RB, WR, TE first, then everyone else">Group by position</span>
+        <span class="chip" id="bothToggle" title="Only players appearing on both sides of your matchups">Both sides only</span>
+      </div>
+      <div class="spacer"></div>
+      <button class="ghost" id="expandAll" type="button">Expand all</button>
+      <button class="ghost" id="csv" type="button">Export CSV</button>
+    </div>
+
+    <div class="panes">
+      <section class="pane pane-for">
+        <div class="pane-head">
+          <h2><span class="dot f"></span>For me</h2>
+          <span class="pane-sub" id="forSub"></span>
+        </div>
+        <div class="tablewrap">
+          <table class="grid" data-side="for">
+            <thead>
+              <tr>
+                <th data-key="name">Player</th>
+                <th data-key="pos" class="poscol">Pos</th>
+                <th data-key="team">NFL</th>
+                <th data-key="count" class="num" title="Number of your lineups this player is starting in">Lineups</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyFor"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="emptyFor" hidden>Nothing here.</div>
+      </section>
+
+      <section class="pane pane-against">
+        <div class="pane-head">
+          <h2><span class="dot a"></span>Against me</h2>
+          <span class="pane-sub" id="againstSub"></span>
+        </div>
+        <div class="tablewrap">
+          <table class="grid" data-side="against">
+            <thead>
+              <tr>
+                <th data-key="name">Player</th>
+                <th data-key="pos" class="poscol">Pos</th>
+                <th data-key="team">NFL</th>
+                <th data-key="count" class="num" title="Number of opponent lineups this player is starting in">Lineups</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyAgainst"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="emptyAgainst" hidden>Nothing here.</div>
+      </section>
+    </div>
+
+    <footer id="foot"></footer>
+  </div>
+</div>
+<script src="js/app.js"></script>
+</body>
+</html>
