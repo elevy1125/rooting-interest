@@ -153,6 +153,15 @@ favicon.svg           football icon (favicon.png / apple-touch-icon.png are rast
 - Multi-week playoff matchups, where `matchupPeriodId` and `scoringPeriodId` diverge, aren't handled
   specially yet.
 
+## To do
+
+- **Fullscreen mode** — a distraction-free view of the two tables for leaving up on a second screen
+  during games.
+- **Game datetimes** — show each player's kickoff time, so it's clear what's already played, what's
+  on now, and what's still to come.
+- **Game statuses** — a per-player state of *yet to play*, *playing*, or *game finished*, surfaced on
+  the row rather than inferred from the `proj` / `live` / untagged Pts tag.
+
 ## Notes
 
 Not affiliated with Sleeper or ESPN. Sleeper's API is used per its
