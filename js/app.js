@@ -23,7 +23,10 @@ var state = {
   bothOnly: false,
   pos: null,
   search: "",
-  open: {}                // "side:playerId" -> bool
+  open: {},               // "side:playerId" -> bool
+  leagueOrder: [],        // league ids, highest scoring priority first
+  orderIndex: {},         // league id -> position in leagueOrder
+  leagueNames: {}
 };
 
 /* ---------------- helpers ---------------- */
@@ -180,7 +183,7 @@ function run(username, season, week){
   }).then(function(bundles){
     setStatus("Crunching lineups…", 96);
 
-    var byPlayer = {}, counted = 0;
+    var byPlayer = {}, counted = 0, active = [];
 
     function add(pid, side, ctx){
       if(!pid || pid === "0") return;
@@ -195,11 +198,14 @@ function run(username, season, week){
       if(side === "for") row.forCount++; else row.againstCount++;
       row.total = row.forCount + row.againstCount;
       row.net = row.forCount - row.againstCount;
+      var pts = ctx.points && Object.prototype.hasOwnProperty.call(ctx.points, pid)
+        ? Number(ctx.points[pid]) : null;
       row.entries.push({
-        league: ctx.league, side: side,
+        league: ctx.league, leagueId: ctx.leagueId, side: side,
         startedBy: side === "for" ? ctx.myTeam : ctx.oppTeam,
         versus:    side === "for" ? ctx.oppTeam : ctx.myTeam,
-        manager:   side === "for" ? ctx.myManager : ctx.oppManager
+        manager:   side === "for" ? ctx.myManager : ctx.oppManager,
+        points: (pts === null || isNaN(pts)) ? null : pts
       });
     }
 
@@ -234,15 +240,20 @@ function run(username, season, week){
       var oppTeam = opps.length ? teamNameFor(oppRoster, usersById) : "— no opponent —";
       var oppManager = oppRoster ? ((usersById[oppRoster.owner_id] || {}).display_name || "") : "";
 
+      active.push({id:lg.league_id, name:name});
+
       myStarters.forEach(function(pid){
-        add(pid, "for", {league:name, myTeam:myTeam, oppTeam:oppTeam, myManager:myManager, oppManager:oppManager});
+        add(pid, "for", {league:name, leagueId:lg.league_id, myTeam:myTeam, oppTeam:oppTeam,
+          myManager:myManager, oppManager:oppManager, points: myM.players_points});
       });
 
       opps.forEach(function(om){
         var r = rostersById[om.roster_id];
         var ctx = {
-          league:name, myTeam:myTeam, oppTeam:teamNameFor(r, usersById), myManager:myManager,
-          oppManager: r ? ((usersById[r.owner_id] || {}).display_name || "") : ""
+          league:name, leagueId:lg.league_id, myTeam:myTeam, oppTeam:teamNameFor(r, usersById),
+          myManager:myManager,
+          oppManager: r ? ((usersById[r.owner_id] || {}).display_name || "") : "",
+          points: om.players_points
         };
         (om.starters || []).forEach(function(pid){ add(pid, "against", ctx); });
       });
@@ -252,7 +263,7 @@ function run(username, season, week){
       user:user,
       rows: Object.keys(byPlayer).map(function(k){ return byPlayer[k]; }),
       skipped:skipped, leaguesTotal:leagues.length, leaguesCounted:counted,
-      season:season, week:week
+      activeLeagues:active, season:season, week:week
     };
   });
 }
@@ -261,6 +272,58 @@ function run(username, season, week){
 
 function countOf(row, side){ return side === "for" ? row.forCount : row.againstCount; }
 function isBoth(row){ return row.forCount > 0 && row.againstCount > 0; }
+
+// Points for one player on one side. A player in several leagues has a different
+// score in each, so we show the one from the highest-priority league they appear
+// in, plus the spread across the rest.
+function ptsInfo(row, side){
+  var scored = row.entries.filter(function(e){
+    return e.side === side && typeof e.points === "number";
+  });
+  if(!scored.length) return {val:null, min:null, max:null, league:null};
+  var best = null, bestRank = Infinity, vals = [];
+  scored.forEach(function(e){
+    var rank = state.orderIndex[e.leagueId];
+    if(rank === undefined) rank = 9999;
+    if(rank < bestRank){ bestRank = rank; best = e; }
+    vals.push(e.points);
+  });
+  return {
+    val: best.points, league: best.league,
+    min: Math.min.apply(null, vals), max: Math.max.apply(null, vals)
+  };
+}
+function ptsOf(row, side){
+  var p = ptsInfo(row, side);
+  return p.val === null ? -Infinity : p.val;
+}
+function fmtPts(n){ return (Math.round(n * 100) / 100).toFixed(1); }
+
+function rebuildOrderIndex(){
+  state.orderIndex = {};
+  state.leagueOrder.forEach(function(id, i){ state.orderIndex[id] = i; });
+}
+
+function prioKey(){ return "sleeper_prio_" + (state.meta && state.meta.user ? state.meta.user.user_id : "x"); }
+
+function loadOrder(activeLeagues){
+  var ids = activeLeagues.map(function(l){ return l.id; });
+  var saved = null;
+  try{ saved = JSON.parse(localStorage.getItem(prioKey()) || "null"); }catch(e){}
+  var order = [];
+  if(saved && saved.length){
+    // keep saved order, drop leagues that are gone, append ones that are new
+    saved.forEach(function(id){ if(ids.indexOf(id) !== -1) order.push(id); });
+  }
+  ids.forEach(function(id){ if(order.indexOf(id) === -1) order.push(id); });
+  state.leagueOrder = order;
+  state.leagueNames = {};
+  activeLeagues.forEach(function(l){ state.leagueNames[l.id] = l.name; });
+  rebuildOrderIndex();
+}
+function saveOrder(){
+  try{ localStorage.setItem(prioKey(), JSON.stringify(state.leagueOrder)); }catch(e){}
+}
 
 function renderSummary(m){
   var both = 0;
@@ -333,6 +396,7 @@ function visibleRows(side){
   }).sort(function(a, b){
     var c;
     if(s.key === "count") c = countOf(a, side) - countOf(b, side);
+    else if(s.key === "pts") c = ptsOf(a, side) - ptsOf(b, side);
     else if(s.key === "pos") c = posRank(a.pos) - posRank(b.pos) || a.pos.localeCompare(b.pos);
     else if(s.key === "name") c = a.name.localeCompare(b.name);
     else c = String(a[s.key]).localeCompare(String(b[s.key]));
@@ -345,16 +409,25 @@ function detailHTML(row, side, cols){
   // The "for" table shows who you're up against; the "against" table doesn't need
   // a column repeating your own team name on every row.
   var showFacing = side === "for";
+  var top = state.leagueOrder[0];
   var body = row.entries.filter(function(e){ return e.side === side; })
-    .sort(function(a, b){ return a.league.localeCompare(b.league); })
+    .sort(function(a, b){
+      var ra = state.orderIndex[a.leagueId], rb = state.orderIndex[b.leagueId];
+      return (ra === undefined ? 9999 : ra) - (rb === undefined ? 9999 : rb);
+    })
     .map(function(e){
-      return "<tr><td>" + esc(e.league) + "</td><td>" + esc(e.startedBy) +
+      var used = e.leagueId === top;
+      return '<tr' + (used ? ' class="lead"' : "") + "><td>" + esc(e.league) + "</td><td>" +
+        esc(e.startedBy) +
         (e.manager ? ' <span style="color:var(--muted)">(' + esc(e.manager) + ")</span>" : "") +
-        "</td>" + (showFacing ? "<td>" + esc(e.versus) + "</td>" : "") + "</tr>";
+        "</td>" + (showFacing ? "<td>" + esc(e.versus) + "</td>" : "") +
+        '<td class="num">' + (typeof e.points === "number" ? fmtPts(e.points) :
+          '<span class="nopts">—</span>') + "</td></tr>";
     }).join("");
   return '<td class="details" colspan="' + cols + '"><div class="details-inner"><table class="sub">' +
     "<thead><tr><th>League</th><th>" + (showFacing ? "Your team" : "Opponent") + "</th>" +
-    (showFacing ? "<th>Facing</th>" : "") + "</tr></thead><tbody>" + body + "</tbody></table></div></td>";
+    (showFacing ? "<th>Facing</th>" : "") + '<th class="num">Pts</th></tr></thead><tbody>' +
+    body + "</tbody></table></div></td>";
 }
 
 function rowHTML(r, side, cols){
@@ -364,15 +437,25 @@ function rowHTML(r, side, cols){
       (r.inj ? '<span class="inj">' + esc(r.inj) + "</span>" : "") +
       (isBoth(r) ? '<span class="both">both sides</span>' : "") + "</td>";
   if(!state.group) html += '<td class="poscol"><span class="pos">' + esc(r.pos) + "</span></td>";
-  html += '<td><span class="tw">' + esc(r.team) + "</span></td>" +
-    '<td class="num"><span class="cnt">' + countOf(r, side) + "</span></td></tr>";
+  html += '<td><span class="tw">' + esc(r.team) + "</span></td>";
+
+  var p = ptsInfo(r, side);
+  if(p.val === null){
+    html += '<td class="num pts"><span class="nopts">—</span></td>';
+  } else {
+    html += '<td class="num pts"><span class="pv">' + fmtPts(p.val) + "</span>" +
+      (p.min !== p.max ? '<span class="rng">' + fmtPts(p.min) + "–" + fmtPts(p.max) + "</span>" : "") +
+      "</td>";
+  }
+
+  html += '<td class="num"><span class="cnt">' + countOf(r, side) + "</span></td></tr>";
   if(open) html += '<tr class="detailrow">' + detailHTML(r, side, cols) + "</tr>";
   return html;
 }
 
 function renderSide(side){
   var rows = visibleRows(side);
-  var cols = state.group ? 3 : 4;
+  var cols = state.group ? 4 : 5;
   var tbody = el(side === "for" ? "tbodyFor" : "tbodyAgainst");
   var table = document.querySelector('table.grid[data-side="' + side + '"]');
   var html = [];
@@ -401,9 +484,16 @@ function renderSide(side){
   el(side === "for" ? "emptyFor" : "emptyAgainst").hidden = rows.length > 0;
 
   var starts = rows.reduce(function(n, r){ return n + countOf(r, side); }, 0);
+  var total = 0, scored = false;
+  rows.forEach(function(r){
+    r.entries.forEach(function(e){
+      if(e.side === side && typeof e.points === "number"){ total += e.points; scored = true; }
+    });
+  });
   el(side === "for" ? "forSub" : "againstSub").textContent =
     rows.length + " player" + (rows.length === 1 ? "" : "s") + " · " + starts +
-    " start" + (starts === 1 ? "" : "s");
+    " start" + (starts === 1 ? "" : "s") +
+    (scored ? " · " + fmtPts(total) + " pts" : "");
 
   // sort arrows
   var s = state.sort[side];
@@ -417,9 +507,45 @@ function renderSide(side){
 
 function renderTables(){ renderSide("for"); renderSide("against"); }
 
+function renderPrio(){
+  var list = el("prioList");
+  list.innerHTML = state.leagueOrder.map(function(id, i){
+    return '<li draggable="true" data-id="' + esc(id) + '">' +
+      '<span class="grip" aria-hidden="true">⋮⋮</span>' +
+      '<span class="rank">' + (i + 1) + "</span>" +
+      '<span class="lname">' + esc(state.leagueNames[id] || id) + "</span>" +
+      '<span class="moves">' +
+        '<button type="button" class="mv" data-dir="-1" aria-label="Move up"' +
+          (i === 0 ? " disabled" : "") + ">↑</button>" +
+        '<button type="button" class="mv" data-dir="1" aria-label="Move down"' +
+          (i === state.leagueOrder.length - 1 ? " disabled" : "") + ">↓</button>" +
+      "</span></li>";
+  }).join("");
+  el("prioToggle").textContent = "Scoring: " +
+    (state.leagueNames[state.leagueOrder[0]] || "priority");
+}
+
+function moveLeague(id, delta){
+  var from = state.leagueOrder.indexOf(id);
+  var to = from + delta;
+  if(from < 0 || to < 0 || to >= state.leagueOrder.length) return;
+  state.leagueOrder.splice(to, 0, state.leagueOrder.splice(from, 1)[0]);
+  rebuildOrderIndex(); saveOrder(); renderPrio(); renderTables();
+}
+function placeLeague(id, beforeId){
+  if(id === beforeId) return;
+  var order = state.leagueOrder.filter(function(x){ return x !== id; });
+  var at = beforeId === null ? order.length : order.indexOf(beforeId);
+  if(at < 0) at = order.length;
+  order.splice(at, 0, id);
+  state.leagueOrder = order;
+  rebuildOrderIndex(); saveOrder(); renderPrio(); renderTables();
+}
+
 function renderAll(m){
   if(m) renderSummary(m);
   renderPosChips();
+  renderPrio();
   renderTables();
   results.classList.add("on");
 }
@@ -463,6 +589,48 @@ function wire(){
     renderTables();
   });
 
+  el("prioToggle").addEventListener("click", function(){
+    var p = el("prio");
+    p.hidden = !p.hidden;
+    this.classList.toggle("on", !p.hidden);
+  });
+
+  var list = el("prioList"), dragId = null;
+  list.addEventListener("click", function(e){
+    var btn = e.target.closest("button.mv");
+    if(!btn) return;
+    moveLeague(btn.closest("li").getAttribute("data-id"), parseInt(btn.getAttribute("data-dir"), 10));
+  });
+  list.addEventListener("dragstart", function(e){
+    var li = e.target.closest("li");
+    if(!li) return;
+    dragId = li.getAttribute("data-id");
+    li.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    try{ e.dataTransfer.setData("text/plain", dragId); }catch(err){}
+  });
+  list.addEventListener("dragend", function(){
+    dragId = null;
+    Array.prototype.forEach.call(list.querySelectorAll("li"), function(li){
+      li.classList.remove("dragging", "over");
+    });
+  });
+  list.addEventListener("dragover", function(e){
+    if(!dragId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    var li = e.target.closest("li");
+    Array.prototype.forEach.call(list.querySelectorAll("li"), function(x){ x.classList.remove("over"); });
+    if(li && li.getAttribute("data-id") !== dragId) li.classList.add("over");
+  });
+  list.addEventListener("drop", function(e){
+    if(!dragId) return;
+    e.preventDefault();
+    var li = e.target.closest("li");
+    placeLeague(dragId, li ? li.getAttribute("data-id") : null);
+    dragId = null;
+  });
+
   el("bothToggle").addEventListener("click", function(){
     state.bothOnly = !state.bothOnly;
     this.classList.toggle("on", state.bothOnly);
@@ -479,12 +647,15 @@ function wire(){
   });
 
   el("csv").addEventListener("click", function(){
-    var lines = [["Side", "Player", "Pos", "NFL", "Starts", "League", "Started by", "Facing"]];
+    var lines = [["Side", "Player", "Pos", "NFL", "Starts", "Priority pts", "League",
+      "Started by", "Facing", "League pts"]];
     ["for", "against"].forEach(function(side){
       visibleRows(side).forEach(function(r){
+        var p = ptsInfo(r, side);
         r.entries.filter(function(e){ return e.side === side; }).forEach(function(e){
           lines.push([side === "for" ? "For me" : "Against me", r.name, r.pos, r.team,
-            countOf(r, side), e.league, e.startedBy, e.versus]);
+            countOf(r, side), p.val === null ? "" : fmtPts(p.val), e.league, e.startedBy, e.versus,
+            typeof e.points === "number" ? fmtPts(e.points) : ""]);
         });
       });
     });
@@ -519,6 +690,8 @@ function wire(){
 
     clearError();
     el("skipped").hidden = true;
+    el("prio").hidden = true;
+    el("prioToggle").classList.remove("on");
     results.classList.remove("on");
     el("go").disabled = true;
     state.open = {};
@@ -530,6 +703,7 @@ function wire(){
       .then(function(m){
         state.rows = m.rows;
         state.meta = m;
+        loadOrder(m.activeLeagues || []);
         state.sort = { "for": {key:"count", dir:-1}, "against": {key:"count", dir:-1} };
         clearStatus();
         if(!m.rows.length) showError("No starters found for week " + week + " in any of your leagues.");

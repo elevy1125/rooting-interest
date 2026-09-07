@@ -16,8 +16,25 @@ current week's matchup in each one, and tallies each starter:
 Click any row to expand the details: which league, which team is starting them, and the manager. On the
 "For me" side it also shows who that team is facing.
 
-Leagues that didn't contribute a matchup this week aren't counted in the league total — an asterisk on
-that number lists them on hover or click.
+Leagues that didn't contribute a matchup this week aren't counted in the league total. A muted
+"+n without a matchup" caption under that number lists them when clicked.
+
+## Live scoring
+
+Each table has a **Pts** column showing what the player has actually scored this week. Sleeper's
+matchup payload carries `players_points` — points already computed under that league's own scoring
+rules — so no scoring math happens here and no extra requests are made.
+
+Leagues with different scoring settings can give the same player different point totals. The
+**Scoring priority** panel lets you drag your leagues into an order; the Pts column uses the
+highest-priority league that player appears in, and shows the spread across the others beneath it
+when they disagree. Inside the expanded details every league's own
+points are listed, with the priority league highlighted. The order is saved per Sleeper account in
+`localStorage`.
+
+Points read `—` before a player's game starts, and 0.0 once it has. Commissioner adjustments
+(`custom_points`) apply to team totals, not per-player values, so they aren't reflected here. Stat
+corrections can restate points days later.
 
 ## Features
 

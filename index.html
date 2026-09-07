@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rooting Interest</title>
-<meta name="description" content="See every starter in your Sleeper matchups this week">
+<meta name="description" content="See every starter in your Sleeper matchups this week — how many of your lineups they're in, and how many are playing against you.">
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>Rooting Interest</h1>
-    <p>Every starter in your Sleeper matchups this week, across all your leagues.</p>
+    <p>Every starter in your Sleeper matchups this week, across all your leagues — who you're rooting for, and who's rooting against you.</p>
   </header>
 
   <div class="card">
@@ -46,10 +46,21 @@
       <div class="chips">
         <span class="chip on" id="groupToggle" title="QB, RB, WR, TE first, then everyone else">Group by position</span>
         <span class="chip" id="bothToggle" title="Only players appearing on both sides of your matchups">Both sides only</span>
+        <span class="chip" id="prioToggle" title="Choose which league's scoring the points column uses">Scoring priority</span>
       </div>
       <div class="spacer"></div>
       <button class="ghost" id="expandAll" type="button">Expand all</button>
       <button class="ghost" id="csv" type="button">Export CSV</button>
+    </div>
+
+    <div class="prio" id="prio" hidden>
+      <div class="prio-head">
+        <b>Scoring priority</b>
+        <span>Leagues with different scoring settings can give the same player different point
+        totals. The Pts column uses the highest league on this list that the player appears in.
+        Drag to reorder.</span>
+      </div>
+      <ol class="prio-list" id="prioList"></ol>
     </div>
 
     <div class="panes">
@@ -65,6 +76,7 @@
                 <th data-key="name">Player</th>
                 <th data-key="pos" class="poscol">Pos</th>
                 <th data-key="team">NFL</th>
+                <th data-key="pts" class="num" title="Points scored under the highest-priority league this player appears in">Pts</th>
                 <th data-key="count" class="num" title="How many of your lineups this player is starting in">Starts</th>
               </tr>
             </thead>
@@ -86,6 +98,7 @@
                 <th data-key="name">Player</th>
                 <th data-key="pos" class="poscol">Pos</th>
                 <th data-key="team">NFL</th>
+                <th data-key="pts" class="num" title="Points scored under the highest-priority league this player appears in">Pts</th>
                 <th data-key="count" class="num" title="How many opponent lineups this player is starting in">Starts</th>
               </tr>
             </thead>

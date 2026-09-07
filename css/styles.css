@@ -66,6 +66,24 @@ button.ghost:hover{border-color:var(--accent)}
 .chip.on{background:var(--accent);border-color:var(--accent);color:#06101f;font-weight:600}
 .spacer{flex:1}
 
+.prio{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px 16px;margin-bottom:14px}
+.prio-head b{display:block;font-size:13px;margin-bottom:2px}
+.prio-head span{display:block;color:var(--muted);font-size:12px;max-width:70ch}
+.prio-list{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;
+  max-width:520px}
+.prio-list li{display:flex;align-items:center;gap:10px;background:var(--panel2);
+  border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:grab}
+.prio-list li.dragging{opacity:.4}
+.prio-list li.over{border-color:var(--accent);box-shadow:0 -2px 0 -1px var(--accent) inset}
+.prio-list .grip{color:var(--muted);letter-spacing:-2px;font-size:13px}
+.prio-list .rank{color:var(--muted);font-size:11px;min-width:14px}
+.prio-list .lname{flex:1;font-weight:600;font-size:13px}
+.prio-list li:first-child .lname{color:var(--accent)}
+.prio-list .moves{display:flex;gap:4px}
+.prio-list .mv{padding:1px 7px;font-size:12px;line-height:1.4;border-radius:6px}
+.prio-list .mv:disabled{opacity:.3;cursor:default}
+
 .panes{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
 .pane{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
 .pane-for{border-top:3px solid var(--for)}
@@ -99,6 +117,13 @@ tr.row:hover>td,tr.row.open>td{background:var(--panel2)}
 .cnt{font-weight:700}
 .pane-for .cnt{color:var(--for)}
 .pane-against .cnt{color:var(--agn)}
+
+td.pts{line-height:1.25}
+td.pts .pv{font-weight:700;font-variant-numeric:tabular-nums}
+td.pts .rng{display:block;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
+.nopts{color:var(--muted);opacity:.6}
+table.sub tr.lead td{background:rgba(79,156,249,.07)}
+table.sub td.num,table.sub th.num{text-align:right;font-variant-numeric:tabular-nums}
 .both{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--warn);
   background:var(--warnbg);border:1px solid var(--warn);border-radius:5px;padding:1px 5px;margin-left:8px;
   white-space:nowrap}
