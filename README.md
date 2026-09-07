@@ -32,9 +32,33 @@ when they disagree. Inside the expanded details every league's own
 points are listed, with the priority league highlighted. The order is saved per Sleeper account in
 `localStorage`.
 
-Points read `—` before a player's game starts, and 0.0 once it has. Commissioner adjustments
-(`custom_points`) apply to team totals, not per-player values, so they aren't reflected here. Stat
-corrections can restate points days later.
+### Projections
+
+Before a player's game kicks off there are no real points yet, so the Pts column shows a projection
+instead, tagged `proj` and dimmed. The column has three states:
+
+| State | Shown | Source |
+| --- | --- | --- |
+| Game hasn't started | projection, tagged `proj` | Sleeper projections, scored by league |
+| Game in progress | points so far, tagged `live` | `players_points` |
+| Game final | final points, untagged | `players_points` |
+
+A player whose team is on bye is tagged `bye`.
+
+Projections come from `api.sleeper.com/projections/nfl/<season>/<week>` as **raw stats**, not points,
+so they're multiplied through each league's own `scoring_settings` — the same dot product Sleeper
+does server-side. That keeps projections and actuals in the same units, so a league with 6-point
+passing TDs projects differently from one with 4.
+
+Game states come from ESPN's public scoreboard (`site.api.espn.com`), since Sleeper has no
+game-status endpoint. If either request fails the app falls back to actual points only.
+
+**Refresh scores** re-pulls matchups, game states and projections while leaving the player database,
+league list and rosters cached, and the page auto-refreshes every two minutes while the tab is
+visible (paused when it isn't). The last update time sits beside the button.
+
+Commissioner adjustments (`custom_points`) apply to team totals, not per-player values, so they
+aren't reflected here. Stat corrections can restate points days later.
 
 ## Features
 

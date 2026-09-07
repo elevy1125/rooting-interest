@@ -120,8 +120,19 @@ tr.row:hover>td,tr.row.open>td{background:var(--panel2)}
 
 td.pts{line-height:1.25}
 td.pts .pv{font-weight:700;font-variant-numeric:tabular-nums}
-td.pts .rng{display:block;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
+td.pts .pv.isproj{font-weight:600;color:var(--muted)}
+td.pts .sub{display:flex;justify-content:flex-end;margin-top:1px}
 .nopts{color:var(--muted);opacity:.6}
+td.num.isproj{color:var(--muted)}
+
+.tag{font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
+  padding:1px 4px;border-radius:4px;border:1px solid;line-height:1.4}
+.tag.proj{color:var(--muted);border-color:var(--line);background:var(--panel2)}
+.tag.live{color:var(--accent);border-color:rgba(79,156,249,.5);background:rgba(79,156,249,.12)}
+.tag.bye{color:var(--muted);border-color:var(--line);opacity:.7}
+
+.updated{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 table.sub tr.lead td{background:rgba(79,156,249,.07)}
 table.sub td.num,table.sub th.num{text-align:right;font-variant-numeric:tabular-nums}
 .both{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--warn);
