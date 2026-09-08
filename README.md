@@ -174,7 +174,9 @@ with what's currently on. Group by games swaps this set out, see [Modes](#modes)
 
 More than one panel can be open at a time, and they stack in the order you opened them, newest at the
 top, so the one you just clicked is the one under your cursor. Closing one leaves the rest where they
-are. Positions lists the codes outright (`RB, WR, TE`) since they're short. **Both sides only** carries its own count. **Group by position**
+are. Positions lists the codes outright (`RB, WR, TE`) since they're short, and only lists the ones
+the view you're in can actually show, so a position that exists nowhere but your bench stays out of
+it until you're in Roster view. **Both sides only** carries its own count. **Group by position**
 (QB, RB, WR, TE, K, DEF, then the rest) sits inside the Positions panel.
 
 The search box matches players, NFL teams and league names. Every column sorts, independently per
@@ -252,8 +254,14 @@ actual points and Status goes blank.
 ESPN's `/nfl/teams` endpoint isn't CORS-accessible cross-origin, so the `proTeamId` to abbreviation
 map is baked in and topped up each week from the scoreboard.
 
-The player database is ~5 MB, so it's trimmed to name/position/team/injury and cached in
-`localStorage` for 24 hours. **Refresh players** clears it. Without storage, it refetches per session.
+The player database is ~5 MB, so it's trimmed to name, position, team, injury and ESPN id, and
+cached in `localStorage` for 24 hours. **Refresh players** clears it. Without storage, it refetches
+per session.
+
+Sleeper's `position` is where a player lines up, not what he is to you, so a receiver who also plays
+corner comes back a defensive back. Where the same player carries an offensive `fantasy_positions`
+entry, that one wins. Players who are only ever defenders keep the position they have, so an IDP
+league still reads right.
 
 ## Structure
 

@@ -9,10 +9,31 @@
 
 var API = "https://api.sleeper.app/v1";
 var ESPN = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons";
-var PKEY = "sleeper_players_slim_v3", PTS = "sleeper_players_ts_v3";
+var PKEY = "sleeper_players_slim_v4", PTS = "sleeper_players_ts_v4";
 var EKEY = "ri_espn_leagues_v1", TKEY = "ri_espn_teams_v1";
 var DAY = 86400000;
 var POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DEF"];
+
+/* Sleeper's `position` is where a player lines up, so a receiver who also plays
+   corner comes back as a defensive back. `fantasy_positions` carries the
+   offensive listing alongside it, so a defensive primary defers to that. The
+   two fields disagree about granularity: fantasy positions only ever use the
+   coarse DB/DL/LB buckets, `position` has the specific ones, so both spellings
+   are here. DEF is a team defense, not a defender, and is not in this list. */
+var IDP_POS = {DB:1, DL:1, LB:1, LEO:1, CB:1, S:1, SS:1, FS:1, DE:1, DT:1,
+               NT:1, OLB:1, ILB:1, MLB:1, EDGE:1};
+
+function slimPos(p){
+  var list = p.fantasy_positions || [];
+  var pos = p.position || list[0] || "";
+  if(!IDP_POS[pos]) return pos;
+  for(var i = 0; i < list.length; i++){
+    // Someone who is only ever a defender keeps what he has, so an IDP league
+    // still reads the way it should.
+    if(list[i] && !IDP_POS[list[i]]) return list[i];
+  }
+  return pos;
+}
 
 var el = function(id){ return document.getElementById(id); };
 var statusBox, statusText, bar, errBox, results;
@@ -210,8 +231,7 @@ function loadPlayers(){
       p = all[id];
       if(!p) continue;
       name = p.full_name || [p.first_name, p.last_name].filter(Boolean).join(" ") || id;
-      slim[id] = [name, p.position || (p.fantasy_positions && p.fantasy_positions[0]) || "",
-                  p.team || "", p.injury_status || "", p.espn_id || ""];
+      slim[id] = [name, slimPos(p), p.team || "", p.injury_status || "", p.espn_id || ""];
     }
     writeCache(slim);
     return indexPlayers(slim);
@@ -895,9 +915,15 @@ function renderFooter(m){
 }
 
 // Positions present in the current rows, in the usual fantasy order.
+/* Bench players are aggregated on every load whether or not Roster view is on,
+   so this counts what the current view can actually show. Otherwise a position
+   nobody starts sits in the list filtering nothing. It asks sharesOf rather
+   than visibleRows so that unchecking a position doesn't remove it. */
 function posList(){
   var seen = {};
-  state.rows.forEach(function(r){ seen[r.pos] = true; });
+  state.rows.forEach(function(r){
+    if(sharesOf(r, "for") || sharesOf(r, "against")) seen[r.pos] = true;
+  });
   return Object.keys(seen).sort(function(a, b){
     return posRank(a) - posRank(b) || a.localeCompare(b);
   });
