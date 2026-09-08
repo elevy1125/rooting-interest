@@ -28,6 +28,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#06101f
 button.primary:disabled{opacity:.5;cursor:default}
 button.ghost{background:transparent}
 button.ghost:hover{border-color:var(--accent)}
+button.ghost.on{border-color:var(--accent);color:var(--accent)}
 .hint{color:var(--muted);font-size:12px;margin-top:10px}
 
 .espn{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
@@ -71,23 +72,9 @@ button.ghost:hover{border-color:var(--accent)}
 
 #results{display:none;margin-top:22px}
 #results.on{display:block}
-.summary-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px}
-.freshness{margin-left:auto;display:flex;gap:10px;align-items:center}
-.summary{display:flex;flex-wrap:wrap;gap:10px}
-.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-  padding:9px 14px 11px;min-width:104px}
-.stat > span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
-  color:var(--muted);margin-bottom:2px}
-.stat b{display:block;font-size:20px;line-height:1.2;white-space:nowrap}
-.stat .statnote{display:block;margin-top:3px;font-size:11px;font-style:normal;color:var(--muted);
-  cursor:pointer;border-bottom:1px dotted var(--line);padding-bottom:1px;width:fit-content}
-.stat .statnote:hover,.stat .statnote.open{color:var(--accent);border-bottom-color:var(--accent)}
-
-.skipped{margin:-8px 0 16px;color:var(--muted);font-size:12px;
-  border-left:2px solid var(--line);padding:2px 0 2px 10px}
-.skipped .sk{color:var(--txt)}
-
-.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+/* Everything in the bar sits on one baseline directly above the tables; the
+   "updated" line lives in the headroom the taller right-hand stack creates. */
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--line);background:var(--panel);border-radius:99px;
   padding:5px 12px;font-size:12px;cursor:pointer;user-select:none}
@@ -114,8 +101,10 @@ button.ghost:hover{border-color:var(--accent)}
 .prio-list .mv:disabled{opacity:.3;cursor:default}
 
 .chip.open,.chip.filtered{border-color:var(--accent);color:var(--accent)}
-.lf-bulk{display:flex;gap:8px;margin-top:12px}
+.lf-bulk{display:flex;gap:8px;margin-top:12px;max-width:520px}
 .lf-bulk button{padding:4px 10px;font-size:12px}
+/* grouping isn't a bulk selection, so it sits apart from the two that are */
+.lf-bulk #groupToggle{margin-left:auto}
 .lf-list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;
   max-width:520px}
 .lf-list li{background:var(--panel2);border:1px solid var(--line);border-radius:8px}
@@ -172,7 +161,8 @@ td.num.isproj{color:var(--muted)}
 .tag.bye{color:var(--muted);border-color:var(--line);opacity:.7}
 
 .updated{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
-.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.actions{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.action-btns{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 table.sub tr.lead td{background:rgba(79,156,249,.07)}
 table.sub td.num,table.sub th.num{text-align:right;font-variant-numeric:tabular-nums}
 .both{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--warn);

@@ -18,8 +18,8 @@ them together:
 Click any row to expand the details: which league, which team is starting them, and the manager. On the
 "For me" side it also shows who that team is facing.
 
-Leagues that didn't contribute a matchup this week aren't counted in the league total. A muted
-"+n without a matchup" caption under that number lists them when clicked.
+Leagues that didn't post a matchup this week are ignored entirely. They don't appear in the
+league filter and nothing is counted from them.
 
 ## Live scoring
 
@@ -68,14 +68,16 @@ aren't reflected here. Stat corrections can restate points days later.
 ## Features
 
 - Side-by-side **For me / Against me** tables
-- **Grouped by position** (QB → RB → WR → TE → K → DEF, then everything else) — toggleable
+- **Group by position** (QB → RB → WR → TE → K → DEF, then everything else), toggled from inside
+  the Positions dropdown
 - Every column sortable, independently per table; counts are **starts** (one per league a player starts in)
-- Filter by position, search across players/NFL teams/league names
-- "Both sides only" view
-- CSV export of whatever is currently on screen
+- **Positions** and **Leagues** dropdowns, each a multi-select with select all / select none; the
+  button shows what's currently filtered for
+- "Both sides only" view, with the count of those players on the button
+- Search across players/NFL teams/league names
 - Auto-detects the current NFL season and week; both are editable
 - Sleeper and ESPN leagues merge into one view, each league tagged by platform
-- Handles co-owned rosters, empty starter slots, and leagues with no matchup posted yet
+- Handles co-owned rosters and empty starter slots
 
 ## Running it
 

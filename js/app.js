@@ -25,7 +25,7 @@ var state = {
   sort: { "for": {key:"count", dir:-1}, "against": {key:"count", dir:-1} },
   group: true,
   bothOnly: false,
-  pos: null,
+  posOff: {},             // positions left out of the tables (default: none)
   search: "",
   open: {},               // "side:playerId" -> bool
   leagueOrder: [],        // league ids, highest scoring priority first
@@ -533,9 +533,9 @@ function run(username, season, week){
 
 function aggregate(matchupsByLeague){
   var ctx = state.ctx, userId = ctx.user.user_id, week = ctx.week;
-  var skipped = [], leagues = ctx.leagues;
+  var leagues = ctx.leagues;
   {
-    var byPlayer = {}, counted = 0, active = [];
+    var byPlayer = {}, active = [];
 
     function add(pid, side, c){
       if(!pid || pid === "0") return;
@@ -572,13 +572,13 @@ function aggregate(matchupsByLeague){
       b.rosters.forEach(function(r){ rostersById[r.roster_id] = r; });
 
       var mine = myRoster(b.rosters, userId);
-      if(!mine){ skipped.push({league:name, reason:"no roster in this league"}); return; }
+      if(!mine) return;
 
       var myM = null, i;
       for(i = 0; i < b.matchups.length; i++){
         if(b.matchups[i].roster_id === mine.roster_id){ myM = b.matchups[i]; break; }
       }
-      if(!myM){ skipped.push({league:name, reason:"no matchup posted"}); return; }
+      if(!myM) return;
 
       var opps = b.matchups.filter(function(m){
         return m.matchup_id != null && m.matchup_id === myM.matchup_id && m.roster_id !== mine.roster_id;
@@ -587,10 +587,7 @@ function aggregate(matchupsByLeague){
       var myTeam = teamNameFor(mine, usersById);
       var myManager = (usersById[mine.owner_id] || {}).display_name || "";
       var myStarters = (myM.starters || []).filter(function(p){ return p && p !== "0"; });
-      if(!myStarters.length){ skipped.push({league:name, reason:"lineup not set"}); return; }
-
-      if(!opps.length) skipped.push({league:name, reason:"no opponent scheduled", partial:true});
-      counted++;
+      if(!myStarters.length) return;
 
       var oppRoster = opps.length ? rostersById[opps[0].roster_id] : null;
       var oppTeam = opps.length ? teamNameFor(oppRoster, usersById) : "— no opponent —";
@@ -618,8 +615,7 @@ function aggregate(matchupsByLeague){
     /* ---- ESPN leagues ---- */
     (ctx.espn || []).forEach(function(l){
       var name = l.name || ("ESPN league " + l.id);
-      if(l.error){ skipped.push({league:name, reason:l.error}); return; }
-      if(!l.teamId){ skipped.push({league:name, reason:"no team selected"}); return; }
+      if(l.error || !l.teamId) return;
 
       var teamsById = {};
       (l.teams || []).forEach(function(t){ teamsById[t.id] = t; });
@@ -632,7 +628,7 @@ function aggregate(matchupsByLeague){
         if(m.home && m.home.teamId === l.teamId){ mine = m; side = "home"; }
         else if(m.away && m.away.teamId === l.teamId){ mine = m; side = "away"; }
       });
-      if(!mine){ skipped.push({league:name, reason:"no matchup posted"}); return; }
+      if(!mine) return;
 
       var me = mine[side], them = mine[side === "home" ? "away" : "home"];
       var starters = function(s){
@@ -640,12 +636,10 @@ function aggregate(matchupsByLeague){
         return ents.filter(function(e){ return !BENCH_SLOTS[e.lineupSlotId]; }).map(espnEntry);
       };
       var mineStarters = starters(me);
-      if(!mineStarters.length){ skipped.push({league:name, reason:"lineup not set"}); return; }
+      if(!mineStarters.length) return;
 
       var myTeam = nameOf(l.teamId);
       var oppTeam = them ? nameOf(them.teamId) : "— no opponent —";
-      if(!them) skipped.push({league:name, reason:"no opponent scheduled", partial:true});
-      counted++;
       active.push({id:esKey(l.id), name:name, platform:"espn"});
 
       var base = {league:name, leagueId:esKey(l.id), platform:"espn",
@@ -667,7 +661,6 @@ function aggregate(matchupsByLeague){
     return {
       user: ctx.user,
       rows: Object.keys(byPlayer).map(function(k){ return byPlayer[k]; }),
-      skipped:skipped, leaguesTotal:leagues.length + (ctx.espn || []).length, leaguesCounted:counted,
       activeLeagues:active, season:ctx.season, week:week
     };
   }
@@ -753,69 +746,40 @@ function saveOrder(){
   try{ localStorage.setItem(prioKey(), JSON.stringify(state.leagueOrder)); }catch(e){}
 }
 
-function renderSummary(m){
-  var both = 0, unique = 0;
-  state.rows.forEach(function(r){
-    if(!countOf(r, "for") && !countOf(r, "against")) return;
-    unique++;
-    if(isBoth(r)) both++;
-  });
-  var flagged = m.skipped || [];
-  var caption = flagged.length
-    ? '<em class="statnote" id="statnote">+' + flagged.length +
-      " without a matchup</em>"
-    : "";
-
-  var shownLeagues = state.leagueOrder.length
-    ? state.leagueOrder.filter(included).length : m.leaguesCounted;
-
-  var stats = [
-    ["Week", esc(m.week), ""],
-    ["Leagues", esc(shownLeagues), caption],
-    ["Unique players", esc(unique), ""],
-    ["On both sides", esc(both), ""]
-  ];
-  el("summary").innerHTML = stats.map(function(s){
-    return '<div class="stat"><span>' + esc(s[0]) + "</span><b>" + s[1] + "</b>" + s[2] + "</div>";
-  }).join("");
-
-  var box = el("skipped");
-  if(flagged.length){
-    box.innerHTML = "No matchup this week: " + flagged.map(function(s){
-      return '<span class="sk">' + esc(s.league) +
-        (s.reason === "no matchup posted" ? "" : " (" + esc(s.reason) + ")") + "</span>";
-    }).join(", ");
-    box.hidden = true;
-    var note = el("statnote");
-    note.addEventListener("click", function(){
-      box.hidden = !box.hidden;
-      note.classList.toggle("open", !box.hidden);
-    });
-  } else {
-    box.innerHTML = "";
-    box.hidden = true;
-  }
-
+function renderFooter(m){
   var who = m.user ? (m.user.display_name || m.user.username) : "";
   var srcs = [];
   if(m.user) srcs.push("Sleeper");
   if((state.ctx.espn || []).length) srcs.push("ESPN");
-  el("foot").textContent = (who ? who + " · " : "") + m.season + " season · data from " +
-    (srcs.join(" and ") || "Sleeper");
+  el("foot").textContent = (who ? who + " · " : "") + m.season + " week " + m.week +
+    " · data from " + (srcs.join(" and ") || "Sleeper");
 }
 
-function renderPosChips(){
+// Positions present in the current rows, in the usual fantasy order.
+function posList(){
   var seen = {};
   state.rows.forEach(function(r){ seen[r.pos] = true; });
-  var list = Object.keys(seen).sort(function(a, b){
+  return Object.keys(seen).sort(function(a, b){
     return posRank(a) - posRank(b) || a.localeCompare(b);
   });
-  el("posChips").innerHTML =
-    '<span class="chip' + (state.pos ? "" : " on") + '" data-pos="">All pos</span>' +
-    list.map(function(p){
-      return '<span class="chip' + (state.pos === p ? " on" : "") + '" data-pos="' + esc(p) + '">' +
-        esc(p) + "</span>";
-    }).join("");
+}
+
+function renderPosFilter(){
+  var list = posList();
+  el("pfList").innerHTML = list.map(function(p){
+    return '<li><label><input type="checkbox" data-pos="' + esc(p) + '"' +
+      (state.posOff[p] ? "" : " checked") + ">" +
+      '<span class="lname">' + esc(p) + "</span></label></li>";
+  }).join("");
+
+  var on = list.filter(function(p){ return !state.posOff[p]; });
+  var chip = el("posToggle");
+  // Name the positions while they still fit, then fall back to a count.
+  chip.textContent = on.length === list.length ? "Positions"
+    : !on.length ? "Positions: none"
+    : on.length <= 3 ? "Positions: " + on.join(", ")
+    : "Positions: " + on.length + " of " + list.length;
+  chip.classList.toggle("filtered", on.length !== list.length);
 }
 
 function visibleRows(side){
@@ -824,7 +788,7 @@ function visibleRows(side){
   return state.rows.filter(function(r){
     if(countOf(r, side) === 0) return false;
     if(state.bothOnly && !isBoth(r)) return false;
-    if(state.pos && r.pos !== state.pos) return false;
+    if(state.posOff[r.pos]) return false;
     if(q){
       var hay = (r.name + " " + r.pos + " " + r.team + " " + sideEntries(r, side)
         .map(function(e){ return e.league + " " + e.startedBy + " " + e.versus; })
@@ -979,23 +943,22 @@ function renderLeagueFilter(){
   }).join("");
 
   var on = state.leagueOrder.filter(included).length, all = state.leagueOrder.length;
-  el("leagueToggle").textContent = (on === all)
-    ? "Leagues" : "Leagues: " + on + " of " + all;
+  el("leagueToggle").textContent = "Leagues (" + on + "/" + all + ")";
   el("leagueToggle").classList.toggle("filtered", on !== all);
 }
 
-// The summary counts players, so it has to follow the filter too.
+// Players starting on both sides, under the current league filter.
+function renderBothToggle(){
+  var n = 0;
+  state.rows.forEach(function(r){ if(isBoth(r)) n++; });
+  el("bothToggle").textContent = "Both sides only (" + n + ")";
+}
+
+// Both-sides count and league tallies follow the league filter, so they're
+// recomputed together whenever it changes.
 function refreshFiltered(){
-  if(state.meta){
-    var open = el("skipped") && !el("skipped").hidden;
-    renderSummary(state.meta);
-    if(open){
-      el("skipped").hidden = false;
-      var n = el("statnote");
-      if(n) n.classList.add("open");
-    }
-  }
   renderLeagueFilter();
+  renderBothToggle();
   renderTables();
 }
 
@@ -1080,10 +1043,11 @@ function renderUpdated(){
 }
 
 function renderAll(m){
-  if(m) renderSummary(m);
-  renderPosChips();
+  if(m) renderFooter(m);
+  renderPosFilter();
   renderPrio();
   renderLeagueFilter();
+  renderBothToggle();
   renderTables();
   renderUpdated();
   results.classList.add("on");
@@ -1149,11 +1113,26 @@ function wire(){
 
   el("search").addEventListener("input", function(e){ state.search = e.target.value; renderTables(); });
 
-  el("posChips").addEventListener("click", function(e){
-    var chip = e.target.closest(".chip");
-    if(!chip) return;
-    state.pos = chip.getAttribute("data-pos") || null;
-    renderPosChips(); renderTables();
+  el("posToggle").addEventListener("click", function(){
+    var p = el("posFilter");
+    p.hidden = !p.hidden;
+    this.classList.toggle("open", !p.hidden);
+  });
+  el("pfList").addEventListener("change", function(e){
+    var cb = e.target.closest("input[type=checkbox]");
+    if(!cb) return;
+    var pos = cb.getAttribute("data-pos");
+    if(cb.checked) delete state.posOff[pos];
+    else state.posOff[pos] = true;
+    renderPosFilter(); renderTables();
+  });
+  el("pfAll").addEventListener("click", function(){
+    state.posOff = {};
+    renderPosFilter(); renderTables();
+  });
+  el("pfNone").addEventListener("click", function(){
+    posList().forEach(function(p){ state.posOff[p] = true; });
+    renderPosFilter(); renderTables();
   });
 
   el("groupToggle").addEventListener("click", function(){
@@ -1238,35 +1217,6 @@ function wire(){
     renderTables();
   });
 
-  el("csv").addEventListener("click", function(){
-    var STATUS = {pre:"projected", "in":"live", post:"final", bye:"bye", none:""};
-    var lines = [["Side", "Player", "Pos", "NFL", "Starts", "Status", "Priority pts", "League",
-      "Started by", "Facing", "League pts"]];
-    ["for", "against"].forEach(function(side){
-      visibleRows(side).forEach(function(r){
-        var p = ptsInfo(r, side), mode = p.mode;
-        sideEntries(r, side).forEach(function(e){
-          var v = shownValue(r, e, mode);
-          lines.push([side === "for" ? "For me" : "Against me", r.name, r.pos, r.team,
-            countOf(r, side), STATUS[mode] || "", p.val === null ? "" : fmtPts(p.val),
-            e.league, e.startedBy, e.versus, typeof v === "number" ? fmtPts(v) : ""]);
-        });
-      });
-    });
-    var csv = lines.map(function(row){
-      return row.map(function(c){
-        c = String(c == null ? "" : c);
-        return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c;
-      }).join(",");
-    }).join("\n");
-    var url = URL.createObjectURL(new Blob([csv], {type:"text/csv"}));
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = "sleeper-week" + (state.meta ? state.meta.week : "") + "-exposure.csv";
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
-  });
-
   el("espnAdd").addEventListener("click", function(){ addEspnLeague(el("espnId").value); });
   el("espnId").addEventListener("keydown", function(e){
     if(e.key === "Enter"){ e.preventDefault(); addEspnLeague(this.value); }
@@ -1317,15 +1267,17 @@ function wire(){
     if(!season || !week){ showError("Enter a season and a week."); return; }
 
     clearError();
-    el("skipped").hidden = true;
     el("prio").hidden = true;
     el("prioToggle").classList.remove("on");
     el("leagueFilter").hidden = true;
     el("leagueToggle").classList.remove("open");
+    el("posFilter").hidden = true;
+    el("posToggle").classList.remove("open");
     results.classList.remove("on");
     el("go").disabled = true;
     state.open = {};
     state.excluded = {};
+    state.posOff = {};
 
     try{ localStorage.setItem("sleeper_last_user", username); }catch(err){}
 
