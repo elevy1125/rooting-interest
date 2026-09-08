@@ -595,7 +595,9 @@ function run(username, season, week){
 }
 
 function aggregate(matchupsByLeague){
-  var ctx = state.ctx, userId = ctx.user.user_id, week = ctx.week;
+  // No Sleeper username means no user and no Sleeper leagues, so the loop below
+  // never runs and this id is never read. It still has to not throw.
+  var ctx = state.ctx, userId = ctx.user ? ctx.user.user_id : null, week = ctx.week;
   var leagues = ctx.leagues;
   var byPlayer = {}, active = [];
 
