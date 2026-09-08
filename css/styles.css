@@ -23,7 +23,10 @@ header p{margin:0 0 20px;color:var(--muted)}
 .setup-inner{overflow:hidden;min-height:0;visibility:visible;transition:visibility 0s}
 .setup.collapsed{grid-template-rows:0fr;opacity:0}
 .setup.collapsed .setup-inner{visibility:hidden;transition:visibility 0s .3s}
-@media (prefers-reduced-motion:reduce){ .setup,.panes{transition:none} }
+@media (prefers-reduced-motion:reduce){
+  .setup,.panes{transition:none}
+  .panes.enter,.games.enter{animation:none}
+}
 
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
 form{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
@@ -139,6 +142,11 @@ button.ghost.on{border-color:var(--accent);color:var(--accent)}
 .lf-list.prio-list li{display:flex;align-items:center;gap:9px;padding:7px 10px;cursor:grab}
 .lf-list.prio-list label{flex:1;padding:0;gap:0}
 .lf-list.prio-list li.off{opacity:.5}
+/* Filtered out by Game status rather than by its own checkbox: it holds its
+   place in the order but there's nothing to decide about it. */
+.lf-list.prio-list li.dim{opacity:.32}
+.lf-list.prio-list li.dim label{cursor:default}
+.gnote-sm{color:var(--muted);font-size:11px;font-weight:500;margin-left:8px}
 .lf-list.prio-list li.off .lname{font-weight:500}
 .lname.lead{color:var(--accent)}
 .scoring{font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
@@ -236,6 +244,16 @@ table.sub thead th{position:static;background:transparent;cursor:default}
 table.sub tr:last-child td{border-bottom:none}
 
 .panes[hidden],.games[hidden]{display:none}
+
+/* Swapping the tables for the cards is a whole different layout arriving, so
+   the one coming in fades up rather than appearing outright. Only the incoming
+   side animates: the outgoing one is display:none the moment it goes, and
+   overlapping the two would need them stacked. */
+@keyframes viewIn{
+  from{opacity:0;transform:translateY(10px)}
+  to{opacity:1;transform:none}
+}
+.panes.enter,.games.enter{animation:viewIn .24s cubic-bezier(.2,.7,.3,1)}
 
 /* One card per game: the game's own details up top, your stake in it below. */
 .games{display:grid;gap:14px}

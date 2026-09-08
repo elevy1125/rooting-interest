@@ -57,6 +57,7 @@
         <span class="chip" id="leagueToggle" title="Which leagues count, and scoring priority">Leagues</span>
         <span class="chip" id="statusToggle" title="Which game states show">Status</span>
         <span class="chip" id="gameToggle" title="Which game days and game states show" hidden>Game status</span>
+        <span class="chip" id="gameOrderToggle" title="Which games show, and in what order" hidden>Games</span>
         <span class="chip" id="bothToggle" title="Only players on both sides">Both sides only</span>
       </div>
       <div class="spacer"></div>
@@ -72,6 +73,7 @@
       </div>
     </div>
 
+    <div class="panels" id="panels">
     <div class="prio" id="posFilter" hidden>
       <div class="prio-head">
         <b>Positions</b>
@@ -121,6 +123,21 @@
       </div>
     </div>
 
+    <div class="prio" id="gameOrderFilter" hidden>
+      <div class="prio-head">
+        <b>Games</b>
+        <span>The checkbox keeps a game in the cards, the order sets where its card sits. Games
+          already hidden by Game status stay in the list, greyed out, so the order survives them
+          coming back.</span>
+      </div>
+      <div class="lf-bulk">
+        <button class="ghost" id="goAll" type="button">Select all</button>
+        <button class="ghost" id="goNone" type="button">Select none</button>
+        <button class="ghost" id="goReset" type="button" title="Back to sorting by game status">Reset order</button>
+      </div>
+      <ol class="lf-list prio-list" id="goList"></ol>
+    </div>
+
     <div class="prio" id="leagueFilter" hidden>
       <div class="prio-head">
         <b>Leagues</b>
@@ -132,6 +149,7 @@
         <button class="ghost" id="lfNone" type="button">Select none</button>
       </div>
       <ol class="lf-list prio-list" id="lfList"></ol>
+    </div>
     </div>
 
     <div class="panes">

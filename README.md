@@ -43,8 +43,9 @@ listed in the footer, which is the only place they live, so the footer stays on 
 | X | Reset view | the two tables back |
 
 Roster view and Group by games are two layouts of the same week, so turning one on turns the other
-off. TV mode sits over whichever of them is up, so `G` then `T` gives you game cards at across-the-
-room size, and pressing `T` again leaves the cards where they were. Each key only ever touches its
+off, and the layout arriving fades up rather than snapping in, since it's a different shape of page
+each time. TV mode sits over whichever of them is up, so `G` then `T` gives you game cards at
+across-the-room size, and pressing `T` again leaves the cards where they were. Each key only ever touches its
 own mode; `X` is the one that clears everything. An error drops you out of TV mode, so the load bar
 carrying the message is on screen.
 
@@ -79,18 +80,33 @@ per-league breakdown.
 
 Position grouping doesn't apply here, since the game is doing the grouping, and the filter chips
 change with it. **Positions** and **Both sides only** go away, **Leagues** stays, and **Status** is
-replaced by **Game status**, which asks two things at once:
+replaced by two chips of its own.
+
+**Game status** asks two things at once:
 
 - **Days**: the days this week's games actually fall on, Thursday before Sunday rather than in
   alphabetical order.
 - **Game state**: any combination of yet to play, playing and finished.
 
-Both are multi-selects with select all and none, and the chip names what's left on (`Games: MON`,
-`Games: SUN, MON · Playing`). Game state is the same setting the Status chip holds in the other
-views, so a choice made in one shows up in the other. The chips that go away leave their filters
-inert while they're gone, the way Both sides does in Roster view, and hand them back on the way out.
+Both are multi-selects with select all and none, and the chip names what's left on (`Game status:
+MON`, `Game status: SUN, MON · Playing`). Game state is the same setting the Status chip holds in the
+other views, so a choice made in one shows up in the other.
 
-The search box and the sort you had still apply.
+**Games** is the list of this week's games, one row each, and works like the Leagues list: the
+checkbox keeps a game in the cards, and the order sets where its card sits. Drag or use the arrows to
+reorder.
+
+Cards sort themselves by game status until you move one, and after that they stay where you put them,
+with any game that turns up later landing at the end. **Reset order** hands them back to sorting
+themselves.
+
+A game already hidden by Game status is greyed out in the list with its checkbox disabled, since
+there's nothing left to decide about it, but it keeps its position, so the order you set is still
+there when the game comes back. Its own checkbox is remembered separately, so a game you unchecked
+stays unchecked through a day filter coming and going.
+
+The chips that go away leave their filters inert while they're gone, the way Both sides does in
+Roster view, and hand them back on the way out. The search box and the sort you had still apply.
 
 ### TV mode
 
@@ -154,7 +170,11 @@ Grouping by position outranks any column sort, so turn it off to get live games 
 ## Filters
 
 **Positions**, **Leagues** and **Status** are multi-selects with select all / none, each labelled
-with what's currently on. Group by games swaps this set out, see [Modes](#modes). Positions lists the codes outright (`RB, WR, TE`) since they're short. **Both sides only** carries its own count. **Group by position**
+with what's currently on. Group by games swaps this set out, see [Modes](#modes).
+
+More than one panel can be open at a time, and they stack in the order you opened them, newest at the
+top, so the one you just clicked is the one under your cursor. Closing one leaves the rest where they
+are. Positions lists the codes outright (`RB, WR, TE`) since they're short. **Both sides only** carries its own count. **Group by position**
 (QB, RB, WR, TE, K, DEF, then the rest) sits inside the Positions panel.
 
 The search box matches players, NFL teams and league names. Every column sorts, independently per

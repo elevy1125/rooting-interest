@@ -29,6 +29,8 @@ var state = {
   posOff: {},             // positions left out of the tables (default: none)
   statusOff: {},          // game states left out of the tables (default: none)
   dayOff: {},             // game days left out of the cards (default: none)
+  gameOff: {},            // games left out by their own checkbox (default: none)
+  gameOrder: null,        // custom card order, or null to follow game status
   search: "",
   open: {},               // "side:playerId" -> bool
   leagueOrder: [],        // league ids, highest scoring priority first
@@ -891,6 +893,16 @@ function posList(){
   });
 }
 
+/* Panels stack in the order you opened them, newest on top, so the one you just
+   asked for is under the cursor rather than wherever it sits in the markup.
+   Closing one leaves the rest where they are. */
+function togglePanel(chip, panel){
+  var open = panel.hidden;
+  panel.hidden = !open;
+  chip.classList.toggle("open", open);
+  if(open) el("panels").insertBefore(panel, el("panels").firstElementChild);
+}
+
 /* The list half of a filter: checkboxes over `items`, select all and none, and
    the `key` state object holding the values that are switched OFF. Returns a
    render function that repaints the list and reports what's left on. */
@@ -941,10 +953,7 @@ function multiFilter(cfg){
       : cfg.title + ": " + on.length + " of " + items.length;
   }
 
-  chip.addEventListener("click", function(){
-    panel.hidden = !panel.hidden;
-    this.classList.toggle("open", !panel.hidden);
-  });
+  chip.addEventListener("click", function(){ togglePanel(chip, panel); });
 
   return function(){
     var r = paint();
@@ -1004,10 +1013,7 @@ function gameFilter(){
     return r.on.length + " of " + r.items.length + " " + noneWord;
   }
 
-  chip.addEventListener("click", function(){
-    panel.hidden = !panel.hidden;
-    this.classList.toggle("open", !panel.hidden);
-  });
+  chip.addEventListener("click", function(){ togglePanel(chip, panel); });
 
   return function(){
     var d = days(), x = states();
@@ -1015,7 +1021,8 @@ function gameFilter(){
       part(d, "days", function(v){ return v; }),
       part(x, "states", function(v){ return STATUS_LABEL[v]; })
     ].filter(Boolean);
-    chip.textContent = bits.length ? "Games: " + bits.join(" · ") : "Game status";
+    // "Game status" spelled out, since the Games chip sits right next to it.
+    chip.textContent = bits.length ? "Game status: " + bits.join(" · ") : "Game status";
     chip.classList.toggle("filtered", bits.length > 0);
   };
 }
@@ -1035,11 +1042,12 @@ function visibleRows(side){
   return state.rows.filter(function(r){
     if(sharesOf(r, side) === 0) return false;
     // Positions and Both sides have no chip in Group by games, so they go inert
-    // there rather than filtering from behind a hidden control.
+    // there rather than filtering from behind a hidden control. Day and state
+    // are properties of the game, so Group by games applies them a card at a
+    // time instead, which is what lets the Games panel list what they hid.
     if(state.bothOnly && state.view === "base" && !isBoth(r)) return false;
     if(!gameOn() && state.posOff[r.pos]) return false;
-    if(state.statusOff[gameMode(r)]) return false;
-    if(gameOn() && state.dayOff[dayOf(r)]) return false;
+    if(!gameOn() && state.statusOff[gameMode(r)]) return false;
     if(q){
       var hay = (r.name + " " + r.pos + " " + r.team + " " + sideEntries(r, side)
         .map(function(e){ return e.league + " " + e.startedBy + " " + e.versus; })
@@ -1214,7 +1222,13 @@ function gameKeyOf(row){
   if(mode === "bye" || mode === "none") return mode;
   var g = gameOf(row), t = normTeam(row.team);
   if(!g || !g.opp) return "none";
-  return g.home ? g.opp + "|" + t : t + "|" + g.opp;
+  if(g.home) return g.opp + "|" + t;
+  var o = state.gameState[g.opp];
+  if(o && o.home) return t + "|" + g.opp;
+  // Neither side claims home. That takes the scoreboard dropping `homeAway`,
+  // which it has never done, but the two halves of a game have to agree on one
+  // key or the game splits into two cards, so fall back to an ordered pair.
+  return t < g.opp ? t + "|" + g.opp : g.opp + "|" + t;
 }
 
 function logoOf(team){
@@ -1304,29 +1318,125 @@ function gameSort(a, b){
   return a.mode === "post" ? -t : t;
 }
 
+/* Cards follow the Status order until you drag one, and then they stay where
+   you put them. A game that shows up later, a kickoff the scoreboard hadn't
+   listed yet, lands after the ones you placed rather than jumping the queue. */
+function sortGames(list){
+  if(!state.gameOrder) return list.sort(gameSort);
+  var at = {};
+  state.gameOrder.forEach(function(k, i){ at[k] = i; });
+  return list.sort(function(a, b){
+    var ia = at[a.key], ib = at[b.key];
+    if(ia === undefined && ib === undefined) return gameSort(a, b);
+    if(ia === undefined) return 1;
+    if(ib === undefined) return -1;
+    return ia - ib;
+  });
+}
+
+// Every game with anyone in it, in order, each flagged with why it is or isn't
+// on: `shown` is what the cards draw, `passes` is what Game status allows.
 function gameGroups(){
   var buckets = {}, order = [];
   ["for", "against"].forEach(function(side){
     visibleRows(side).forEach(function(r){
       var k = gameKeyOf(r), b = buckets[k];
       if(!b){
-        b = buckets[k] = {key:k, mode:gameMode(r), kickoff:kickoffOf(r), "for":[], against:[]};
+        b = buckets[k] = {key:k, mode:gameMode(r), kickoff:kickoffOf(r), day:dayOf(r),
+                          "for":[], against:[]};
         order.push(k);
       }
       b[side].push(r);
     });
   });
-  return order.map(function(k){ return buckets[k]; }).sort(gameSort);
+  var list = order.map(function(k){ return buckets[k]; });
+  list.forEach(function(g){
+    g.passes = !state.statusOff[g.mode] && !(g.day && state.dayOff[g.day]);
+    g.shown = g.passes && !state.gameOff[g.key];
+  });
+  return sortGames(list);
 }
 
-function renderGames(){
-  var games = gameGroups();
-  el("games").innerHTML = games.map(function(g){
+function renderGames(games){
+  var shown = games.filter(function(g){ return g.shown; });
+  el("games").innerHTML = shown.map(function(g){
     return '<section class="gcard ' + esc(g.mode) + '">' + gameHeadHTML(g.key, g.mode) +
       '<div class="gbody">' + gameSideHTML(g["for"], "for") +
       gameSideHTML(g.against, "against") + "</div></section>";
   }).join("");
-  el("emptyGames").hidden = games.length > 0;
+  el("emptyGames").hidden = shown.length > 0;
+}
+
+// "CLE @ JAX", or what the bye and no-game buckets are called on their cards.
+function gameLabel(key){
+  if(key === "bye") return "On bye";
+  if(key === "none") return "No game";
+  var parts = key.split("|");
+  return parts[0] + " @ " + parts[1];
+}
+
+function gameNote(g){
+  if(g.mode === "pre") return g.kickoff ? fmtKick(g.kickoff) : "";
+  if(g.mode === "in") return "Playing";
+  if(g.mode === "post") return "Final";
+  return "";
+}
+
+/* The order half of Group by games. A game Game status has already ruled out is
+   greyed and its checkbox disabled, but it keeps its place in the list so the
+   order you set survives it coming back. */
+function renderGameOrder(games){
+  el("goList").innerHTML = games.map(function(g, i){
+    var cls = [];
+    if(!g.shown) cls.push("off");
+    if(!g.passes) cls.push("dim");
+    var note = gameNote(g);
+    return '<li draggable="true" data-id="' + esc(g.key) + '"' +
+      (cls.length ? ' class="' + cls.join(" ") + '"' : "") + ">" +
+      '<span class="grip" aria-hidden="true">&#8942;&#8942;</span>' +
+      '<input type="checkbox" id="gocb' + i + '" data-id="' + esc(g.key) + '"' +
+        (g.passes ? "" : " disabled") + (state.gameOff[g.key] ? "" : " checked") + ">" +
+      '<span class="rank">' + (i + 1) + "</span>" +
+      '<label class="lname" for="gocb' + i + '">' + esc(gameLabel(g.key)) +
+        (note ? '<span class="gnote-sm">' + esc(note) + "</span>" : "") + "</label>" +
+      '<span class="moves">' +
+        '<button type="button" class="mv" data-dir="-1" aria-label="Move up"' +
+          (i === 0 ? " disabled" : "") + ">&uarr;</button>" +
+        '<button type="button" class="mv" data-dir="1" aria-label="Move down"' +
+          (i === games.length - 1 ? " disabled" : "") + ">&darr;</button>" +
+      "</span></li>";
+  }).join("");
+
+  var on = games.filter(function(g){ return g.shown; }).length;
+  el("gameOrderToggle").textContent = "Games (" + on + "/" + games.length + ")";
+  el("gameOrderToggle").classList.toggle("filtered", on !== games.length);
+}
+
+function setGameIncluded(key, on){
+  if(on) delete state.gameOff[key];
+  else state.gameOff[key] = true;
+  renderBody();
+}
+
+// Both of these pin the order: they write the list they just built back to
+// state, so everything after them stays put until Reset order.
+function moveGame(key, delta){
+  var keys = gameGroups().map(function(g){ return g.key; });
+  var from = keys.indexOf(key), to = from + delta;
+  if(from < 0 || to < 0 || to >= keys.length) return;
+  keys.splice(to, 0, keys.splice(from, 1)[0]);
+  state.gameOrder = keys;
+  renderBody();
+}
+function placeGame(key, beforeKey){
+  if(key === beforeKey) return;
+  var keys = gameGroups().map(function(g){ return g.key; })
+    .filter(function(k){ return k !== key; });
+  var at = beforeKey === null ? keys.length : keys.indexOf(beforeKey);
+  if(at < 0) at = keys.length;
+  keys.splice(at, 0, key);
+  state.gameOrder = keys;
+  renderBody();
 }
 
 /* ---------------- modes ---------------- */
@@ -1358,6 +1468,21 @@ function showChip(chip, panel, on){
   }
 }
 
+var lastView = "base";
+
+/* Only the move between the cards and the tables animates. Base and Roster view
+   share the same layout, and their pane already slides. */
+function noteViewChange(){
+  if(state.view === lastView) return;
+  var swapped = (lastView === "game") !== (state.view === "game");
+  lastView = state.view;
+  if(!swapped) return;
+  var box = state.view === "game" ? el("games") : document.querySelector(".panes");
+  box.classList.remove("enter");
+  void box.offsetWidth;          // reflow, or re-adding the class won't replay it
+  box.classList.add("enter");
+}
+
 function renderModes(){
   var view = state.view;
   document.querySelector(".panes").classList.toggle("roster", view === "roster");
@@ -1370,9 +1495,11 @@ function renderModes(){
   showChip("posToggle", "posFilter", view !== "game");
   showChip("statusToggle", "statusFilter", view !== "game");
   showChip("gameToggle", "gameFilter", view === "game");
+  showChip("gameOrderToggle", "gameOrderFilter", view === "game");
   el("games").hidden = view !== "game";
   document.querySelector(".panes").hidden = view === "game";
   el("emptyGames").hidden = true;
+  noteViewChange();
 }
 
 function renderChips(){
@@ -1385,8 +1512,11 @@ function renderChips(){
 function renderBody(){
   renderModes();
   renderChips();
-  if(state.view === "game") renderGames();
-  else renderTables();
+  if(state.view === "game"){
+    var games = gameGroups();
+    renderGameOrder(games);
+    renderGames(games);
+  } else renderTables();
 }
 
 /* Each key owns one thing and toggles only that, so T drops TV mode and leaves
@@ -1467,6 +1597,47 @@ function setLeagueIncluded(id, on){
   if(on) delete state.excluded[id];
   else state.excluded[id] = true;
   refreshFiltered();
+}
+
+/* Arrow and drag reordering for a prio-list: `move` shifts an id by a step,
+   `place` drops one before another, and both redraw. Shared by the league
+   priority list and the game order. */
+function sortable(listId, move, place){
+  var list = el(listId), dragId = null;
+  list.addEventListener("click", function(e){
+    var btn = e.target.closest("button.mv");
+    if(!btn) return;
+    move(btn.closest("li").getAttribute("data-id"), parseInt(btn.getAttribute("data-dir"), 10));
+  });
+  list.addEventListener("dragstart", function(e){
+    var li = e.target.closest("li");
+    if(!li) return;
+    dragId = li.getAttribute("data-id");
+    li.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    try{ e.dataTransfer.setData("text/plain", dragId); }catch(err){}
+  });
+  list.addEventListener("dragend", function(){
+    dragId = null;
+    Array.prototype.forEach.call(list.querySelectorAll("li"), function(li){
+      li.classList.remove("dragging", "over");
+    });
+  });
+  list.addEventListener("dragover", function(e){
+    if(!dragId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    var li = e.target.closest("li");
+    Array.prototype.forEach.call(list.querySelectorAll("li"), function(x){ x.classList.remove("over"); });
+    if(li && li.getAttribute("data-id") !== dragId) li.classList.add("over");
+  });
+  list.addEventListener("drop", function(e){
+    if(!dragId) return;
+    e.preventDefault();
+    var li = e.target.closest("li");
+    place(dragId, li ? li.getAttribute("data-id") : null);
+    dragId = null;
+  });
 }
 
 function moveLeague(id, delta){
@@ -1668,9 +1839,7 @@ function wire(){
   });
 
   el("leagueToggle").addEventListener("click", function(){
-    var p = el("leagueFilter");
-    p.hidden = !p.hidden;
-    this.classList.toggle("open", !p.hidden);
+    togglePanel(this, el("leagueFilter"));
   });
   el("lfList").addEventListener("change", function(e){
     var cb = e.target.closest("input[type=checkbox]");
@@ -1686,41 +1855,23 @@ function wire(){
     refreshFiltered();
   });
 
-  var list = el("lfList"), dragId = null;
-  list.addEventListener("click", function(e){
-    var btn = e.target.closest("button.mv");
-    if(!btn) return;
-    moveLeague(btn.closest("li").getAttribute("data-id"), parseInt(btn.getAttribute("data-dir"), 10));
+  sortable("lfList", moveLeague, placeLeague);
+  sortable("goList", moveGame, placeGame);
+
+  el("gameOrderToggle").addEventListener("click", function(){
+    togglePanel(this, el("gameOrderFilter"));
   });
-  list.addEventListener("dragstart", function(e){
-    var li = e.target.closest("li");
-    if(!li) return;
-    dragId = li.getAttribute("data-id");
-    li.classList.add("dragging");
-    e.dataTransfer.effectAllowed = "move";
-    try{ e.dataTransfer.setData("text/plain", dragId); }catch(err){}
+  el("goList").addEventListener("change", function(e){
+    var cb = e.target.closest("input[type=checkbox]");
+    if(!cb) return;
+    setGameIncluded(cb.getAttribute("data-id"), cb.checked);
   });
-  list.addEventListener("dragend", function(){
-    dragId = null;
-    Array.prototype.forEach.call(list.querySelectorAll("li"), function(li){
-      li.classList.remove("dragging", "over");
-    });
+  el("goAll").addEventListener("click", function(){ state.gameOff = {}; renderBody(); });
+  el("goNone").addEventListener("click", function(){
+    gameGroups().forEach(function(g){ if(g.passes) state.gameOff[g.key] = true; });
+    renderBody();
   });
-  list.addEventListener("dragover", function(e){
-    if(!dragId) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    var li = e.target.closest("li");
-    Array.prototype.forEach.call(list.querySelectorAll("li"), function(x){ x.classList.remove("over"); });
-    if(li && li.getAttribute("data-id") !== dragId) li.classList.add("over");
-  });
-  list.addEventListener("drop", function(e){
-    if(!dragId) return;
-    e.preventDefault();
-    var li = e.target.closest("li");
-    placeLeague(dragId, li ? li.getAttribute("data-id") : null);
-    dragId = null;
-  });
+  el("goReset").addEventListener("click", function(){ state.gameOrder = null; renderBody(); });
 
   el("bothToggle").addEventListener("click", function(){
     state.bothOnly = !state.bothOnly;
