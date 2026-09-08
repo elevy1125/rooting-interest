@@ -28,6 +28,25 @@ and that league's points. The "For me" side also shows who the team is facing.
 
 Leagues with no matchup this week are ignored entirely and don't appear in the **Leagues** list.
 
+## Roster view
+
+Hold **R** for half a second to trade both tables for one full-width list of every player you roster,
+bench included. Hold it again to go back. A tap does nothing, and nothing happens while you're typing
+in the search box or the username field.
+
+"Against me" slides off, since none of it applies to your own bench. Two columns count instead of
+one:
+
+- **Starts**: lineups you actually have him in, the same number the normal table shows.
+- **Shares**: leagues you roster him in at all, starting or not.
+
+A player you're carrying on the bench everywhere shows 0 starts, and shows up nowhere else in the
+app. Expanding a row tags each league `starting` or `bench`, so you can see where he's in the lineup
+and where he's sitting.
+
+Pts, filters, sorting and search work the same, and both columns sort. Pts still follows league
+priority, now counting the leagues he's benched in.
+
 ## Points
 
 The **Pts** column shows what the player scored this week. Sleeper's matchup payload carries
@@ -126,7 +145,8 @@ data leaves your machine.
 | Player id → name/position/team | `GET /players/nfl` |
 
 Your roster matches on `owner_id`, falling back to `co_owners`; your opponent is the other roster
-sharing your `matchup_id`. Requests run five leagues at a time, well under Sleeper's
+sharing your `matchup_id`. A matchup carries `players` as well as `starters`, so your bench is the
+difference between the two and costs no extra request. Requests run five leagues at a time, well under Sleeper's
 1000-per-minute guidance.
 
 **ESPN** (`lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/<season>/segments/0/leagues/<id>`)
@@ -136,7 +156,8 @@ sharing your `matchup_id`. Requests run five leagues at a time, well under Sleep
 | League name, teams, managers | `?view=mTeam&view=mSettings` |
 | Matchups, lineups, points, projections | `?view=mBoxscore&scoringPeriodId=<week>` |
 
-Starters are entries whose `lineupSlotId` isn't bench (20) or IR (21). Points come from
+Starters are entries whose `lineupSlotId` isn't bench (20) or IR (21), and those two slots are the
+bench Roster view shows. Points come from
 `appliedStatTotal`, projections from the `statSourceId: 1` row, both already scored under league
 rules.
 

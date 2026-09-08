@@ -23,7 +23,7 @@ header p{margin:0 0 20px;color:var(--muted)}
 .setup-inner{overflow:hidden;min-height:0;visibility:visible;transition:visibility 0s}
 .setup.collapsed{grid-template-rows:0fr;opacity:0}
 .setup.collapsed .setup-inner{visibility:hidden;transition:visibility 0s .3s}
-@media (prefers-reduced-motion:reduce){ .setup{transition:none} }
+@media (prefers-reduced-motion:reduce){ .setup,.panes{transition:none} }
 
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
 form{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
@@ -136,13 +136,23 @@ button.ghost.on{border-color:var(--accent);color:var(--accent)}
   border:1px solid rgba(79,156,249,.5);background:rgba(79,156,249,.12)}
 
 
-.panes{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
-.pane{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+/* Roster view collapses the against pane the same way the load bar collapses:
+   a grid track animated to 0fr. min-width:0 is what lets a pane holding a wide
+   table shrink at all. */
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;
+  transition:grid-template-columns .3s ease,gap .3s ease}
+.panes.roster{grid-template-columns:1fr 0fr;gap:0}
+.panes.roster .pane-against{opacity:0;border-width:0;transition:opacity .2s ease}
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;min-width:0}
 .pane-for{border-top:3px solid var(--for)}
 .pane-against{border-top:3px solid var(--agn)}
 .pane-head{display:flex;align-items:baseline;gap:10px;padding:12px 14px}
 .pane-head h2{margin:0;font-size:15px;letter-spacing:-.01em}
 .pane-sub{color:var(--muted);font-size:12px}
+.rv-badge{margin-left:auto;font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+  font-weight:700;color:var(--muted);border:1px solid var(--line);background:var(--panel2);
+  border-radius:5px;padding:2px 6px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:99px;margin-right:7px}
 .dot.f{background:var(--for)} .dot.a{background:var(--agn)}
 
@@ -155,6 +165,8 @@ thead th.num,td.num{text-align:right}
 thead th:hover{color:var(--txt)}
 th .arrow{opacity:.5;margin-left:4px}
 table.grouped .poscol{display:none}
+.sharecol{display:none}
+.panes.roster .pane-for .sharecol{display:table-cell}
 
 tr.grp>td{background:#11161e;color:var(--muted);font-size:11px;font-weight:700;
   text-transform:uppercase;letter-spacing:.08em;padding:6px 12px;border-bottom:1px solid var(--line)}
@@ -167,6 +179,8 @@ tr.row:hover>td,tr.row.open>td{background:var(--panel2)}
 .pos{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:5px;
   background:var(--panel2);border:1px solid var(--line)}
 .cnt{font-weight:700}
+.cnt.none{color:var(--muted);font-weight:600;opacity:.6}
+.shr{font-weight:700;color:var(--muted)}
 .pane-for .cnt{color:var(--for)}
 .pane-against .cnt{color:var(--agn)}
 
@@ -189,6 +203,8 @@ td.num.isproj{color:var(--muted)}
 .tag.proj{color:var(--muted);border-color:var(--line);background:var(--panel2)}
 .tag.live{color:var(--accent);border-color:rgba(79,156,249,.5);background:rgba(79,156,249,.12)}
 .tag.bye{color:var(--muted);border-color:var(--line);opacity:.7}
+.tag.start{color:var(--for);border-color:var(--for);background:transparent}
+.tag.benched{color:var(--muted);border-color:var(--line);background:var(--panel2)}
 
 .updated{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
 .actions{display:flex;flex-direction:column;align-items:flex-end;gap:4px}

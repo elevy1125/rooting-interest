@@ -111,8 +111,9 @@
     <div class="panes">
       <section class="pane pane-for">
         <div class="pane-head">
-          <h2><span class="dot f"></span>For me</h2>
+          <h2><span class="dot f"></span><span id="forTitle">For me</span></h2>
           <span class="pane-sub" id="forSub"></span>
+          <span class="rv-badge" id="rvBadge" hidden>hold R to exit</span>
         </div>
         <div class="tablewrap">
           <table class="grid" data-side="for">
@@ -124,6 +125,7 @@
                 <th data-key="status" title="Kickoff, then live score and quarter, then final">Status</th>
                 <th data-key="pts" class="num" title="Points under the highest-priority league">Pts</th>
                 <th data-key="count" class="num" title="Your lineups starting him">Starts</th>
+                <th data-key="shares" class="num sharecol" title="Leagues you roster him in">Shares</th>
               </tr>
             </thead>
             <tbody id="tbodyFor"></tbody>

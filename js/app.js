@@ -24,6 +24,7 @@ var state = {
   sort: { "for": {key:"count", dir:-1}, "against": {key:"count", dir:-1} },
   group: true,
   bothOnly: false,
+  rosterView: false,      // hold R: your whole roster, bench included, full width
   posOff: {},             // positions left out of the tables (default: none)
   statusOff: {},          // game states left out of the tables (default: none)
   search: "",
@@ -596,7 +597,8 @@ function loadScores(quiet){
     var positions = {};
     ctx.leagues.forEach(function(lg){
       (byLeague[lg.league_id] || []).forEach(function(m){
-        (m.starters || []).forEach(function(pid){
+        // players, not starters: a benched player still needs a projection.
+        (m.players || m.starters || []).forEach(function(pid){
           if(pid && pid !== "0"){
             var info = playerInfo(pid);
             if(info.pos && info.pos !== "?") positions[info.pos] = true;
@@ -650,7 +652,8 @@ function aggregate(matchupsByLeague){
       versus:    side === "for" ? c.oppTeam : c.myTeam,
       manager:   side === "for" ? c.myManager : c.oppManager,
       points: (pts === null || isNaN(pts)) ? null : pts,
-      proj: typeof c.directProj === "number" ? c.directProj : undefined
+      proj: typeof c.directProj === "number" ? c.directProj : undefined,
+      bench: !!c.bench
     });
   }
 
@@ -691,6 +694,16 @@ function aggregate(matchupsByLeague){
         myManager:myManager, oppManager:oppManager, points: myM.players_points});
     });
 
+    // Your bench rides along on every load so Roster view has it without a
+    // second pass. sideEntries() keeps it out of the normal tables.
+    var started = {};
+    myStarters.forEach(function(pid){ started[pid] = true; });
+    (myM.players || mine.players || []).forEach(function(pid){
+      if(!pid || pid === "0" || started[pid]) return;
+      add(pid, "for", {league:name, leagueId:lgKey(lg.league_id), myTeam:myTeam, oppTeam:oppTeam,
+        myManager:myManager, oppManager:oppManager, points: myM.players_points, bench:true});
+    });
+
     opps.forEach(function(om){
       var r = rostersById[om.roster_id];
       var c = {
@@ -722,11 +735,13 @@ function aggregate(matchupsByLeague){
     if(!mine) return;
 
     var me = mine[side], them = mine[side === "home" ? "away" : "home"];
-    var starters = function(s){
+    var lineup = function(s, bench){
       var ents = (s && s.rosterForCurrentScoringPeriod && s.rosterForCurrentScoringPeriod.entries) || [];
-      return ents.filter(function(e){ return !BENCH_SLOTS[e.lineupSlotId]; }).map(espnEntry);
+      return ents.filter(function(e){
+        return bench ? !!BENCH_SLOTS[e.lineupSlotId] : !BENCH_SLOTS[e.lineupSlotId];
+      }).map(espnEntry);
     };
-    var mineStarters = starters(me);
+    var mineStarters = lineup(me, false);
     if(!mineStarters.length) return;
 
     var myTeam = nameOf(l.teamId);
@@ -742,7 +757,12 @@ function aggregate(matchupsByLeague){
       c.directPoints = p.points; c.directProj = p.proj;
       add(p.id, "for", c);
     });
-    if(them) starters(them).forEach(function(p){
+    lineup(me, true).forEach(function(p){
+      var c = {}; for(var k in base) c[k] = base[k];
+      c.directPoints = p.points; c.directProj = p.proj; c.bench = true;
+      add(p.id, "for", c);
+    });
+    if(them) lineup(them, false).forEach(function(p){
       var c = {}; for(var k in base) c[k] = base[k];
       c.directPoints = p.points; c.directProj = p.proj;
       add(p.id, "against", c);
@@ -763,12 +783,21 @@ function included(leagueId){ return !state.excluded[leagueId]; }
 // Entries for one side, honouring the league filter. Counts are derived from
 // this rather than the totals baked in at aggregation time, so unchecking a
 // league updates starts, points and details together.
+// Bench entries only exist on the "for" side and only Roster view wants them,
+// so this is the one place the two views diverge: everything downstream
+// (counts, points, details, search) follows whatever it returns.
 function sideEntries(row, side){
+  var withBench = state.rosterView && side === "for";
   return row.entries.filter(function(e){
-    return e.side === side && included(e.leagueId);
+    return e.side === side && included(e.leagueId) && (withBench || !e.bench);
   });
 }
-function countOf(row, side){ return sideEntries(row, side).length; }
+// Starts is lineups he's actually in; shares is lineups he's on at all. Outside
+// Roster view there are no bench entries, so the two are the same number.
+function countOf(row, side){
+  return sideEntries(row, side).filter(function(e){ return !e.bench; }).length;
+}
+function sharesOf(row, side){ return sideEntries(row, side).length; }
 function isBoth(row){ return countOf(row, "for") > 0 && countOf(row, "against") > 0; }
 
 // The value shown for one player in one league: actual points once his game has
@@ -936,7 +965,7 @@ function visibleRows(side){
   var q = state.search.trim().toLowerCase();
   var s = state.sort[side];
   return state.rows.filter(function(r){
-    if(countOf(r, side) === 0) return false;
+    if(sharesOf(r, side) === 0) return false;
     if(state.bothOnly && !isBoth(r)) return false;
     if(state.posOff[r.pos]) return false;
     if(state.statusOff[gameMode(r)]) return false;
@@ -965,6 +994,7 @@ function visibleRows(side){
       if(c === 0) c = String(a.team).localeCompare(String(b.team));
     }
     else if(s.key === "count") c = countOf(a, side) - countOf(b, side);
+    else if(s.key === "shares") c = sharesOf(a, side) - sharesOf(b, side);
     else if(s.key === "pts") c = ptsOf(a, side) - ptsOf(b, side);
     else if(s.key === "pos") c = posRank(a.pos) - posRank(b.pos) || a.pos.localeCompare(b.pos);
     else if(s.key === "name") c = a.name.localeCompare(b.name);
@@ -978,6 +1008,7 @@ function detailHTML(row, side, cols){
   // The "for" table shows who you're up against; the "against" table doesn't need
   // a column repeating your own team name on every row.
   var showFacing = side === "for";
+  var showLineup = state.rosterView && side === "for";
   var top = topIncluded();
   var mode = gameMode(row);
   var body = sideEntries(row, side)
@@ -994,12 +1025,15 @@ function detailHTML(row, side, cols){
         esc(e.startedBy) +
         (e.manager ? ' <span style="color:var(--muted)">(' + esc(e.manager) + ")</span>" : "") +
         "</td>" + (showFacing ? "<td>" + esc(e.versus) + "</td>" : "") +
+        (showLineup ? "<td>" + (e.bench ? '<span class="tag benched">bench</span>'
+                                        : '<span class="tag start">starting</span>') + "</td>" : "") +
         '<td class="num' + (mode === "pre" ? " isproj" : "") + '">' +
         (typeof v === "number" ? fmtPts(v) : '<span class="nopts">—</span>') + "</td></tr>";
     }).join("");
   return '<td class="details" colspan="' + cols + '"><div class="details-inner"><table class="sub">' +
     "<thead><tr><th>League</th><th>" + (showFacing ? "Your team" : "Opponent") + "</th>" +
-    (showFacing ? "<th>Facing</th>" : "") + '<th class="num">Pts</th></tr></thead><tbody>' +
+    (showFacing ? "<th>Facing</th>" : "") + (showLineup ? "<th>Lineup</th>" : "") +
+    '<th class="num">Pts</th></tr></thead><tbody>' +
     body + "</tbody></table></div></td>";
 }
 
@@ -1030,14 +1064,27 @@ function rowHTML(r, side, cols){
       (tag ? '<span class="sub">' + tag + "</span>" : "") + "</td>";
   }
 
-  html += '<td class="num"><span class="cnt">' + countOf(r, side) + "</span></td></tr>";
+  var starts = countOf(r, side);
+  html += '<td class="num"><span class="cnt' + (starts ? "" : " none") + '">' + starts + "</span></td>";
+  if(state.rosterView && side === "for"){
+    html += '<td class="num sharecol"><span class="shr">' + sharesOf(r, side) + "</span></td>";
+  }
+  html += "</tr>";
   if(open) html += '<tr class="detailrow">' + detailHTML(r, side, cols) + "</tr>";
   return html;
 }
 
+// Shares only differ from starts once the bench is in the list, so the tallies
+// only carry them there.
+function sharesNote(rows, side){
+  if(!(state.rosterView && side === "for")) return "";
+  var n = rows.reduce(function(t, r){ return t + sharesOf(r, side); }, 0);
+  return " · " + n + " share" + (n === 1 ? "" : "s");
+}
+
 function renderSide(side){
   var rows = visibleRows(side);
-  var cols = state.group ? 5 : 6;
+  var cols = (state.group ? 5 : 6) + (state.rosterView && side === "for" ? 1 : 0);
   var tbody = el(side === "for" ? "tbodyFor" : "tbodyAgainst");
   var table = document.querySelector('table.grid[data-side="' + side + '"]');
   var html = [];
@@ -1055,7 +1102,8 @@ function renderSide(side){
       var starts = groups[p].reduce(function(n, r){ return n + countOf(r, side); }, 0);
       html.push('<tr class="grp"><td colspan="' + cols + '">' + esc(p) +
         '<span class="gcount">' + groups[p].length + " player" + (groups[p].length === 1 ? "" : "s") +
-        " · " + starts + " start" + (starts === 1 ? "" : "s") + "</span></td></tr>");
+        " · " + starts + " start" + (starts === 1 ? "" : "s") +
+        sharesNote(groups[p], side) + "</span></td></tr>");
       groups[p].forEach(function(r){ html.push(rowHTML(r, side, cols)); });
     });
   } else {
@@ -1068,7 +1116,7 @@ function renderSide(side){
   var starts = rows.reduce(function(n, r){ return n + countOf(r, side); }, 0);
   el(side === "for" ? "forSub" : "againstSub").textContent =
     rows.length + " player" + (rows.length === 1 ? "" : "s") + " · " + starts +
-    " start" + (starts === 1 ? "" : "s");
+    " start" + (starts === 1 ? "" : "s") + sharesNote(rows, side);
 
   // sort arrows
   var s = state.sort[side];
@@ -1081,6 +1129,39 @@ function renderSide(side){
 }
 
 function renderTables(){ renderSide("for"); renderSide("against"); }
+
+/* ---------------- roster view ---------------- */
+
+/* Hold R to trade the two tables for one full-width list of everyone you
+   roster, bench included. Held rather than tapped so a stray R while you're
+   reading can't flip the page out from under you, and guarded against firing
+   while you're typing in the search box or the username field. */
+var RV_HOLD = 500;
+var rvTimer = null;
+
+function typingIn(t){
+  if(!t) return false;
+  var tag = t.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || !!t.isContentEditable;
+}
+
+function renderRosterView(){
+  var on = state.rosterView;
+  document.querySelector(".panes").classList.toggle("roster", on);
+  el("forTitle").textContent = on ? "My roster" : "For me";
+  el("rvBadge").hidden = !on;
+}
+
+function setRosterView(on){
+  if(state.rosterView === on) return;
+  state.rosterView = on;
+  renderRosterView();
+  renderTables();
+}
+
+function cancelHold(){
+  if(rvTimer){ clearTimeout(rvTimer); rvTimer = null; }
+}
 
 // The league a player's Pts come from: highest in the order that's still
 // included. Leaving out the top league promotes the next one rather than
@@ -1275,7 +1356,7 @@ function wire(){
       if(!k) return;
       var s = state.sort[side];
       if(s.key === k) s.dir = -s.dir;
-      else { s.key = k; s.dir = (k === "count" || k === "pts") ? -1 : 1; }
+      else { s.key = k; s.dir = (k === "count" || k === "shares" || k === "pts") ? -1 : 1; }
       renderSide(side);
     });
     table.querySelector("tbody").addEventListener("click", function(e){
@@ -1288,6 +1369,22 @@ function wire(){
   });
 
   el("search").addEventListener("input", function(e){ state.search = e.target.value; renderTables(); });
+
+  document.addEventListener("keydown", function(e){
+    if(e.key !== "r" && e.key !== "R") return;
+    // e.repeat fires for the whole hold, so only the first keydown starts a timer.
+    if(e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+    if(rvTimer || typingIn(e.target) || !results.classList.contains("on")) return;
+    rvTimer = setTimeout(function(){
+      rvTimer = null;
+      setRosterView(!state.rosterView);
+    }, RV_HOLD);
+  });
+  document.addEventListener("keyup", function(e){
+    // Releasing shift first turns "R" back into "r" mid-hold, so both count.
+    if(e.key === "r" || e.key === "R") cancelHold();
+  });
+  window.addEventListener("blur", cancelHold);
 
   renderPosFilter = multiFilter({
     toggle:"posToggle", panel:"posFilter", list:"pfList", all:"pfAll", none:"pfNone",
