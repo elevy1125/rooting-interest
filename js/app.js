@@ -31,6 +31,7 @@ var state = {
   dayOff: {},             // game days left out of the cards (default: none)
   gameOff: {},            // games left out by their own checkbox (default: none)
   gameOrder: null,        // custom card order, or null to follow game status
+  games: null,            // the grouped games the last render built, in order
   search: "",
   open: {},               // "side:playerId" -> bool
   leagueOrder: [],        // league ids, highest scoring priority first
@@ -77,11 +78,16 @@ function setSetupCollapsed(on){
 function showError(msg){
   errBox.textContent = msg;
   errBox.classList.add("on");
-  // TV mode hides the load bar the error lives in, so an error drops out of it.
-  if(state.tv){ state.tv = false; renderModes(); }
+  // TV mode hides the load bar the error lives in, and body.has-error is what
+  // lets it back through without dropping the mode.
+  document.body.classList.add("has-error");
   setSetupCollapsed(false);
 }
-function clearError(){ errBox.classList.remove("on"); errBox.textContent = ""; }
+function clearError(){
+  errBox.classList.remove("on");
+  errBox.textContent = "";
+  document.body.classList.remove("has-error");
+}
 function esc(s){
   return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
     return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
@@ -797,7 +803,7 @@ function included(leagueId){ return !state.excluded[leagueId]; }
 // so this is the one place the two views diverge: everything downstream
 // (counts, points, details, search) follows whatever it returns.
 function sideEntries(row, side){
-  var withBench = rosterOn() && side === "for";
+  var withBench = benchShown(side);
   return row.entries.filter(function(e){
     return e.side === side && included(e.leagueId) && (withBench || !e.bench);
   });
@@ -805,7 +811,11 @@ function sideEntries(row, side){
 // Starts is lineups he's actually in; shares is lineups he's on at all. Outside
 // Roster view there are no bench entries, so the two are the same number.
 function countOf(row, side){
-  return sideEntries(row, side).filter(function(e){ return !e.bench; }).length;
+  var entries = sideEntries(row, side);
+  // Everywhere else sideEntries has already left the bench out, and this is the
+  // hottest function in the app.
+  if(!benchShown(side)) return entries.length;
+  return entries.filter(function(e){ return !e.bench; }).length;
 }
 function sharesOf(row, side){ return sideEntries(row, side).length; }
 function isBoth(row){ return countOf(row, "for") > 0 && countOf(row, "against") > 0; }
@@ -893,6 +903,13 @@ function posList(){
   });
 }
 
+function closePanels(){
+  Array.prototype.forEach.call(el("panels").children, function(p){ p.hidden = true; });
+  Array.prototype.forEach.call(document.querySelectorAll(".chips .chip"), function(c){
+    c.classList.remove("open");
+  });
+}
+
 /* Panels stack in the order you opened them, newest on top, so the one you just
    asked for is under the cursor rather than wherever it sits in the markup.
    Closing one leaves the rest where they are. */
@@ -941,7 +958,7 @@ function multiList(cfg, apply){
    one list. `chipText` overrides the default label. */
 function multiFilter(cfg){
   var chip = el(cfg.toggle), panel = el(cfg.panel);
-  var paint = multiList(cfg, function(){ renderBody(); });
+  var paint = multiList(cfg, renderFilters);
 
   // Name what's on while the names still fit, then fall back to a count.
   function defaultText(on, items){
@@ -986,8 +1003,9 @@ function dayOf(row){
 function dayList(){
   var first = {}, days = [];
   state.rows.forEach(function(r){
-    var d = dayOf(r), g = gameOf(r);
-    if(!d) return;
+    var g = gameOf(r);
+    if(!g || !g.kickoff) return;
+    var d = DAY_ABBR[new Date(g.kickoff).getDay()];
     if(first[d] === undefined){ first[d] = g.kickoff; days.push(d); }
     else if(g.kickoff < first[d]) first[d] = g.kickoff;
   });
@@ -1000,7 +1018,7 @@ function dayList(){
    same dimension seen from the other view. */
 function gameFilter(){
   var chip = el("gameToggle"), panel = el("gameFilter");
-  var apply = function(){ renderBody(); };
+  var apply = renderFilters;
   var days = multiList({list:"gdList", all:"gdAll", none:"gdNone", key:"dayOff",
     items:dayList}, apply);
   var states = multiList({list:"gxList", all:"gxAll", none:"gxNone", key:"statusOff",
@@ -1030,9 +1048,23 @@ function gameFilter(){
 
 /* Status sort: live games first (what you're watching), then games still to
    come soonest-first, then finished ones most-recent-first. Players in the same
-   game always land together. */
+   game always land together. Rows with no game to report carry no status, so
+   they'd otherwise take turns capping whichever end you sorted from; they park
+   at the bottom both ways, before direction is applied. The game cards claim to
+   mirror this order, so they sort through the same comparator. */
 var STATUS_RANK = {"in":0, pre:1, post:2, bye:3, none:3};
 var STATUS_PIN = {bye:1, none:1};
+
+function statusCmp(aMode, aKick, bMode, bKick){
+  var pa = STATUS_PIN[aMode] ? 1 : 0, pb = STATUS_PIN[bMode] ? 1 : 0;
+  if(pa !== pb) return pa - pb;
+  var c = STATUS_RANK[aMode] - STATUS_RANK[bMode];
+  if(c) return c;
+  // Games still ahead of you read forward in time, finished ones backward, so
+  // the one that just ended is on top.
+  var t = (aKick || 0) - (bKick || 0);
+  return aMode === "post" ? -t : t;
+}
 function statusRank(row){ return STATUS_RANK[gameMode(row)]; }
 function kickoffOf(row){ var g = gameOf(row); return g && g.kickoff; }
 
@@ -1058,18 +1090,7 @@ function visibleRows(side){
   }).sort(function(a, b){
     var c;
     if(s.key === "status"){
-      // Rows with no game to report carry no status, so they'd otherwise take
-      // turns capping whichever end you sorted from. Park them at the bottom
-      // both ways, before direction is applied.
-      var pa = STATUS_PIN[gameMode(a)] ? 1 : 0, pb = STATUS_PIN[gameMode(b)] ? 1 : 0;
-      if(pa !== pb) return pa - pb;
-      c = statusRank(a) - statusRank(b);
-      if(c === 0){
-        var t = (kickoffOf(a) || 0) - (kickoffOf(b) || 0);
-        // Games still ahead of you read forward in time (soonest first), but
-        // finished ones read backward, so the game that just ended is on top.
-        c = gameMode(a) === "post" ? -t : t;
-      }
+      c = statusCmp(gameMode(a), kickoffOf(a), gameMode(b), kickoffOf(b));
       if(c === 0) c = String(a.team).localeCompare(String(b.team));
     }
     else if(s.key === "count") c = countOf(a, side) - countOf(b, side);
@@ -1087,7 +1108,7 @@ function detailHTML(row, side, cols){
   // The "for" table shows who you're up against; the "against" table doesn't need
   // a column repeating your own team name on every row.
   var showFacing = side === "for";
-  var showLineup = rosterOn() && side === "for";
+  var showLineup = benchShown(side);
   var top = topIncluded();
   var mode = gameMode(row);
   var body = sideEntries(row, side)
@@ -1116,36 +1137,37 @@ function detailHTML(row, side, cols){
     body + "</tbody></table></div></td>";
 }
 
-function rowHTML(r, side, cols){
+/* One row for both layouts. A card row drops the Status column, since the card
+   header already carries it, and always names the position; a table row hides
+   the position while it's grouping by it and gains Shares in Roster view. */
+function rowHTML(r, side, cols, card){
   var key = side + ":" + r.id, open = !!state.open[key];
   var html = '<tr class="row' + (open ? " open" : "") + '" data-id="' + esc(r.id) + '">' +
     '<td class="name"><span class="caret">&#9656;</span> ' + esc(r.name) +
       (r.inj ? '<span class="inj">' + esc(r.inj) + "</span>" : "") +
       (isBoth(r) && !rosterOn() ? '<span class="both">both sides</span>' : "") + "</td>";
-  if(!state.group) html += '<td class="poscol"><span class="pos">' + esc(r.pos) + "</span></td>";
+  if(card || !state.group) html += '<td class="poscol"><span class="pos">' + esc(r.pos) + "</span></td>";
   html += '<td><span class="tw">' + esc(r.team) + "</span></td>";
 
-  var g = statusCell(r);
-  html += '<td class="gs gs-' + g.cls + '">' +
-    (g.main ? '<span class="gs-main">' + esc(g.main) + "</span>" : '<span class="nopts">—</span>') +
-    (g.note ? ' <span class="gs-note">' + esc(g.note) + "</span>" : "") + "</td>";
+  if(!card){
+    var g = statusCell(r);
+    html += '<td class="gs gs-' + g.cls + '">' +
+      (g.main ? '<span class="gs-main">' + esc(g.main) + "</span>" : '<span class="nopts">&mdash;</span>') +
+      (g.note ? ' <span class="gs-note">' + esc(g.note) + "</span>" : "") + "</td>";
+  }
 
   var p = ptsInfo(r, side);
   var tag = p.mode === "pre" ? '<span class="tag proj">proj</span>'
           : p.mode === "in" ? '<span class="tag live">live</span>'
           : p.mode === "bye" ? '<span class="tag bye">bye</span>' : "";
-  if(p.val === null){
-    html += '<td class="num pts"><span class="nopts">—</span>' +
-      (tag ? '<span class="sub">' + tag + "</span>" : "") + "</td>";
-  } else {
-    html += '<td class="num pts"><span class="pv' + (p.mode === "pre" ? " isproj" : "") + '">' +
-      fmtPts(p.val) + "</span>" +
-      (tag ? '<span class="sub">' + tag + "</span>" : "") + "</td>";
-  }
+  html += '<td class="num pts">' +
+    (p.val === null ? '<span class="nopts">&mdash;</span>'
+      : '<span class="pv' + (p.mode === "pre" ? " isproj" : "") + '">' + fmtPts(p.val) + "</span>") +
+    (tag ? '<span class="sub">' + tag + "</span>" : "") + "</td>";
 
   var starts = countOf(r, side);
   html += '<td class="num"><span class="cnt' + (starts ? "" : " none") + '">' + starts + "</span></td>";
-  if(rosterOn() && side === "for"){
+  if(benchShown(side)){
     html += '<td class="num sharecol"><span class="shr">' + sharesOf(r, side) + "</span></td>";
   }
   html += "</tr>";
@@ -1156,14 +1178,14 @@ function rowHTML(r, side, cols){
 // Shares only differ from starts once the bench is in the list, so the tallies
 // only carry them there.
 function sharesNote(rows, side){
-  if(!(rosterOn() && side === "for")) return "";
+  if(!benchShown(side)) return "";
   var n = rows.reduce(function(t, r){ return t + sharesOf(r, side); }, 0);
   return " · " + n + " share" + (n === 1 ? "" : "s");
 }
 
 function renderSide(side){
   var rows = visibleRows(side);
-  var cols = (state.group ? 5 : 6) + (rosterOn() && side === "for" ? 1 : 0);
+  var cols = (state.group ? 5 : 6) + (benchShown(side) ? 1 : 0);
   var tbody = el(side === "for" ? "tbodyFor" : "tbodyAgainst");
   var table = document.querySelector('table.grid[data-side="' + side + '"]');
   var html = [];
@@ -1274,27 +1296,6 @@ function gameHeadHTML(key, mode){
     "</div>";
 }
 
-// A card row is deliberately not a table row: the game's status is already in
-// the header, so the columns collapse to who, where, how many and how much.
-function gameRowHTML(r, side){
-  var key = side + ":" + r.id, open = !!state.open[key];
-  var p = ptsInfo(r, side);
-  var tag = p.mode === "pre" ? '<span class="tag proj">proj</span>'
-          : p.mode === "in" ? '<span class="tag live">live</span>' : "";
-  return '<tr class="row' + (open ? " open" : "") + '" data-id="' + esc(r.id) + '">' +
-    '<td class="name"><span class="caret">&#9656;</span> ' + esc(r.name) +
-      (r.inj ? '<span class="inj">' + esc(r.inj) + "</span>" : "") +
-      (isBoth(r) ? '<span class="both">both sides</span>' : "") + "</td>" +
-    '<td><span class="pos">' + esc(r.pos) + "</span></td>" +
-    '<td><span class="tw">' + esc(r.team) + "</span></td>" +
-    '<td class="num pts">' +
-      (p.val === null ? '<span class="nopts">&mdash;</span>'
-        : '<span class="pv' + (p.mode === "pre" ? " isproj" : "") + '">' + fmtPts(p.val) + "</span>") +
-      (tag ? '<span class="sub">' + tag + "</span>" : "") + "</td>" +
-    '<td class="num"><span class="cnt">' + countOf(r, side) + "</span></td></tr>" +
-    (open ? '<tr class="detailrow">' + detailHTML(r, side, 5) + "</tr>" : "");
-}
-
 function gameSideHTML(rows, side){
   if(!rows.length) return "";
   var starts = rows.reduce(function(n, r){ return n + countOf(r, side); }, 0);
@@ -1303,20 +1304,11 @@ function gameSideHTML(rows, side){
     (side === "for" ? "For me" : "Against me") +
     '<span class="gside-sub">' + starts + " start" + (starts === 1 ? "" : "s") + "</span></div>" +
     '<table class="grid card" data-side="' + side + '"><tbody>' +
-    rows.map(function(r){ return gameRowHTML(r, side); }).join("") +
+    rows.map(function(r){ return rowHTML(r, side, 5, true); }).join("") +
     "</tbody></table></div>";
 }
 
-// Same ordering the Status column sorts by: what's on now, then what's next,
-// then what just finished, with byes parked at the end.
-function gameSort(a, b){
-  var pa = STATUS_PIN[a.mode] ? 1 : 0, pb = STATUS_PIN[b.mode] ? 1 : 0;
-  if(pa !== pb) return pa - pb;
-  var c = STATUS_RANK[a.mode] - STATUS_RANK[b.mode];
-  if(c) return c;
-  var t = (a.kickoff || 0) - (b.kickoff || 0);
-  return a.mode === "post" ? -t : t;
-}
+function gameSort(a, b){ return statusCmp(a.mode, a.kickoff, b.mode, b.kickoff); }
 
 /* Cards follow the Status order until you drag one, and then they stay where
    you put them. A game that shows up later, a kickoff the scoreboard hadn't
@@ -1386,30 +1378,23 @@ function gameNote(g){
    greyed and its checkbox disabled, but it keeps its place in the list so the
    order you set survives it coming back. */
 function renderGameOrder(games){
-  el("goList").innerHTML = games.map(function(g, i){
-    var cls = [];
-    if(!g.shown) cls.push("off");
-    if(!g.passes) cls.push("dim");
-    var note = gameNote(g);
-    return '<li draggable="true" data-id="' + esc(g.key) + '"' +
-      (cls.length ? ' class="' + cls.join(" ") + '"' : "") + ">" +
-      '<span class="grip" aria-hidden="true">&#8942;&#8942;</span>' +
-      '<input type="checkbox" id="gocb' + i + '" data-id="' + esc(g.key) + '"' +
-        (g.passes ? "" : " disabled") + (state.gameOff[g.key] ? "" : " checked") + ">" +
-      '<span class="rank">' + (i + 1) + "</span>" +
-      '<label class="lname" for="gocb' + i + '">' + esc(gameLabel(g.key)) +
-        (note ? '<span class="gnote-sm">' + esc(note) + "</span>" : "") + "</label>" +
-      '<span class="moves">' +
-        '<button type="button" class="mv" data-dir="-1" aria-label="Move up"' +
-          (i === 0 ? " disabled" : "") + ">&uarr;</button>" +
-        '<button type="button" class="mv" data-dir="1" aria-label="Move down"' +
-          (i === games.length - 1 ? " disabled" : "") + ">&darr;</button>" +
-      "</span></li>";
-  }).join("");
-
   var on = games.filter(function(g){ return g.shown; }).length;
   el("gameOrderToggle").textContent = "Games (" + on + "/" + games.length + ")";
   el("gameOrderToggle").classList.toggle("filtered", on !== games.length);
+
+  // This runs on every render in Game view, and the rows are only worth building
+  // while someone is looking at them.
+  if(el("gameOrderFilter").hidden) return;
+  el("goList").innerHTML = games.map(function(g, i){
+    var note = gameNote(g);
+    return prioItemHTML({
+      id:g.key, i:i, last:i === games.length - 1, cb:"gocb" + i,
+      checked:!state.gameOff[g.key], disabled:!g.passes,
+      cls:(g.shown ? "" : "off") + (g.passes ? "" : " dim"),
+      label:esc(gameLabel(g.key)) +
+        (note ? '<span class="gnote-sm">' + esc(note) + "</span>" : "")
+    });
+  }).join("");
 }
 
 function setGameIncluded(key, on){
@@ -1420,24 +1405,17 @@ function setGameIncluded(key, on){
 
 // Both of these pin the order: they write the list they just built back to
 // state, so everything after them stays put until Reset order.
-function moveGame(key, delta){
-  var keys = gameGroups().map(function(g){ return g.key; });
-  var from = keys.indexOf(key), to = from + delta;
-  if(from < 0 || to < 0 || to >= keys.length) return;
-  keys.splice(to, 0, keys.splice(from, 1)[0]);
-  state.gameOrder = keys;
+// The list the last render built, rather than building it again.
+function gameList(){ return state.games || gameGroups(); }
+function gameKeys(){ return gameList().map(function(g){ return g.key; }); }
+
+function reorderGames(order){
+  if(!order) return;
+  state.gameOrder = order;
   renderBody();
 }
-function placeGame(key, beforeKey){
-  if(key === beforeKey) return;
-  var keys = gameGroups().map(function(g){ return g.key; })
-    .filter(function(k){ return k !== key; });
-  var at = beforeKey === null ? keys.length : keys.indexOf(beforeKey);
-  if(at < 0) at = keys.length;
-  keys.splice(at, 0, key);
-  state.gameOrder = keys;
-  renderBody();
-}
+function moveGame(key, delta){ reorderGames(moveIn(gameKeys(), key, delta)); }
+function placeGame(key, beforeKey){ reorderGames(placeIn(gameKeys(), key, beforeKey)); }
 
 /* ---------------- modes ---------------- */
 
@@ -1451,6 +1429,8 @@ var MODE_KEYS = {r:"roster", g:"game", t:"tv", x:"base"};
 
 function rosterOn(){ return state.view === "roster"; }
 function gameOn(){ return state.view === "game"; }
+// Bench entries only exist on the "for" side, and only Roster view wants them.
+function benchShown(side){ return rosterOn() && side === "for"; }
 
 function typingIn(t){
   if(!t) return false;
@@ -1511,12 +1491,21 @@ function renderChips(){
 
 function renderBody(){
   renderModes();
-  renderChips();
   if(state.view === "game"){
-    var games = gameGroups();
-    renderGameOrder(games);
-    renderGames(games);
-  } else renderTables();
+    state.games = gameGroups();
+    renderGameOrder(state.games);
+    renderGames(state.games);
+  } else {
+    state.games = null;
+    renderTables();
+  }
+}
+
+/* Chip labels and the lists behind them only move when the data or the filters
+   do, so typing in the search box redraws the tables and nothing else. */
+function renderFilters(){
+  renderChips();
+  renderBody();
 }
 
 /* Each key owns one thing and toggles only that, so T drops TV mode and leaves
@@ -1531,7 +1520,7 @@ function toggleMode(mode){
   } else {
     state.view = state.view === mode ? "base" : mode;
   }
-  renderBody();
+  renderFilters();
 }
 
 function cancelHold(){
@@ -1551,30 +1540,20 @@ function topIncluded(){
 // One list does both jobs: the checkbox includes a league in the tables, the
 // order sets which league's scoring the Pts column uses.
 function renderLeagueFilter(){
-  var lead = topIncluded();
+  var lead = topIncluded(), all = state.leagueOrder.length;
   el("lfList").innerHTML = state.leagueOrder.map(function(id, i){
     var espn = id.indexOf("es:") === 0, on = included(id);
-    return '<li draggable="true" data-id="' + esc(id) + '"' +
-      (on ? "" : ' class="off"') + ">" +
-      '<span class="grip" aria-hidden="true">⋮⋮</span>' +
-      '<input type="checkbox" id="lfcb' + i + '" data-id="' + esc(id) + '"' +
-        (on ? " checked" : "") + ">" +
-      '<span class="rank">' + (i + 1) + "</span>" +
-      '<label class="lname' + (id === lead ? " lead" : "") + '" for="lfcb' + i + '">' +
-        esc(state.leagueNames[id] || id) +
+    return prioItemHTML({
+      id:id, i:i, last:i === all - 1, cb:"lfcb" + i, checked:on, cls:on ? "" : "off",
+      labelCls:"lname" + (id === lead ? " lead" : ""),
+      label:esc(state.leagueNames[id] || id) +
         '<span class="plat ' + (espn ? "espn" : "sleeper") + '">' +
         (espn ? "ESPN" : "Sleeper") + "</span>" +
-        (id === lead ? '<span class="scoring">scoring</span>' : "") +
-      "</label>" +
-      '<span class="moves">' +
-        '<button type="button" class="mv" data-dir="-1" aria-label="Move up"' +
-          (i === 0 ? " disabled" : "") + ">↑</button>" +
-        '<button type="button" class="mv" data-dir="1" aria-label="Move down"' +
-          (i === state.leagueOrder.length - 1 ? " disabled" : "") + ">↓</button>" +
-      "</span></li>";
+        (id === lead ? '<span class="scoring">scoring</span>' : "")
+    });
   }).join("");
 
-  var on = state.leagueOrder.filter(included).length, all = state.leagueOrder.length;
+  var on = state.leagueOrder.filter(included).length;
   el("leagueToggle").textContent = "Leagues (" + on + "/" + all + ")";
   el("leagueToggle").classList.toggle("filtered", on !== all);
 }
@@ -1590,7 +1569,7 @@ function renderBothToggle(){
 // recomputed together whenever it changes.
 function refreshFiltered(){
   renderLeagueFilter();
-  renderBody();
+  renderFilters();
 }
 
 function setLeagueIncluded(id, on){
@@ -1640,22 +1619,50 @@ function sortable(listId, move, place){
   });
 }
 
-function moveLeague(id, delta){
-  var from = state.leagueOrder.indexOf(id);
-  var to = from + delta;
-  if(from < 0 || to < 0 || to >= state.leagueOrder.length) return;
-  state.leagueOrder.splice(to, 0, state.leagueOrder.splice(from, 1)[0]);
-  rebuildOrderIndex(); saveOrder(); renderLeagueFilter(); renderBody();
+/* One row of a sortable prio-list: grip, checkbox, rank, label, up and down.
+   `label` is already-built HTML. Shared by the league priority list and the game
+   order so the two can't drift apart from the CSS they both rely on. */
+function prioItemHTML(o){
+  return '<li draggable="true" data-id="' + esc(o.id) + '"' +
+    (o.cls ? ' class="' + o.cls + '"' : "") + ">" +
+    '<span class="grip" aria-hidden="true">&#8942;&#8942;</span>' +
+    '<input type="checkbox" id="' + o.cb + '" data-id="' + esc(o.id) + '"' +
+      (o.disabled ? " disabled" : "") + (o.checked ? " checked" : "") + ">" +
+    '<span class="rank">' + (o.i + 1) + "</span>" +
+    '<label class="' + (o.labelCls || "lname") + '" for="' + o.cb + '">' + o.label + "</label>" +
+    '<span class="moves">' +
+      '<button type="button" class="mv" data-dir="-1" aria-label="Move up"' +
+        (o.i === 0 ? " disabled" : "") + ">&uarr;</button>" +
+      '<button type="button" class="mv" data-dir="1" aria-label="Move down"' +
+        (o.last ? " disabled" : "") + ">&darr;</button>" +
+    "</span></li>";
 }
-function placeLeague(id, beforeId){
-  if(id === beforeId) return;
-  var order = state.leagueOrder.filter(function(x){ return x !== id; });
-  var at = beforeId === null ? order.length : order.indexOf(beforeId);
-  if(at < 0) at = order.length;
-  order.splice(at, 0, id);
+
+/* Reordering over a plain list of ids. Both return a new order, or null when
+   there's nothing to do, so the callers only carry their own persistence. */
+function moveIn(list, id, delta){
+  var from = list.indexOf(id), to = from + delta;
+  if(from < 0 || to < 0 || to >= list.length) return null;
+  var out = list.slice();
+  out.splice(to, 0, out.splice(from, 1)[0]);
+  return out;
+}
+function placeIn(list, id, beforeId){
+  if(id === beforeId) return null;
+  var out = list.filter(function(x){ return x !== id; });
+  var at = beforeId === null ? out.length : out.indexOf(beforeId);
+  if(at < 0) at = out.length;
+  out.splice(at, 0, id);
+  return out;
+}
+
+function reorderLeagues(order){
+  if(!order) return;
   state.leagueOrder = order;
   rebuildOrderIndex(); saveOrder(); renderLeagueFilter(); renderBody();
 }
+function moveLeague(id, delta){ reorderLeagues(moveIn(state.leagueOrder, id, delta)); }
+function placeLeague(id, beforeId){ reorderLeagues(placeIn(state.leagueOrder, id, beforeId)); }
 
 function renderEspnConfig(){
   var list = el("espnList");
@@ -1717,7 +1724,7 @@ function renderUpdated(){
 function renderAll(m){
   if(m) renderFooter(m);
   renderLeagueFilter();
-  renderBody();
+  renderFilters();
   renderUpdated();
   results.classList.add("on");
 }
@@ -1806,7 +1813,7 @@ function wire(){
     var table = tr.closest("table.grid");
     var key = table.getAttribute("data-side") + ":" + tr.getAttribute("data-id");
     state.open[key] = !state.open[key];
-    renderGames();
+    renderBody();
   });
 
   renderPosFilter = multiFilter({
@@ -1860,6 +1867,7 @@ function wire(){
 
   el("gameOrderToggle").addEventListener("click", function(){
     togglePanel(this, el("gameOrderFilter"));
+    renderBody();          // the rows are only built while the panel is open
   });
   el("goList").addEventListener("change", function(e){
     var cb = e.target.closest("input[type=checkbox]");
@@ -1868,7 +1876,7 @@ function wire(){
   });
   el("goAll").addEventListener("click", function(){ state.gameOff = {}; renderBody(); });
   el("goNone").addEventListener("click", function(){
-    gameGroups().forEach(function(g){ if(g.passes) state.gameOff[g.key] = true; });
+    gameList().forEach(function(g){ if(g.passes) state.gameOff[g.key] = true; });
     renderBody();
   });
   el("goReset").addEventListener("click", function(){ state.gameOrder = null; renderBody(); });
@@ -1938,18 +1946,16 @@ function wire(){
     if(!week){ showError("Enter a week."); return; }
 
     clearError();
-    el("leagueFilter").hidden = true;
-    el("leagueToggle").classList.remove("open");
-    el("posFilter").hidden = true;
-    el("posToggle").classList.remove("open");
-    el("statusFilter").hidden = true;
-    el("statusToggle").classList.remove("open");
+    closePanels();
     results.classList.remove("on");
     el("go").disabled = true;
     state.open = {};
     state.excluded = {};
     state.posOff = {};
     state.statusOff = {};
+    state.dayOff = {};
+    state.gameOff = {};
+    state.gameOrder = null;
 
     try{ localStorage.setItem("sleeper_last_user", username); }catch(err){}
 

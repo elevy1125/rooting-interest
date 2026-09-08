@@ -46,8 +46,8 @@ Roster view and Group by games are two layouts of the same week, so turning one 
 off, and the layout arriving fades up rather than snapping in, since it's a different shape of page
 each time. TV mode sits over whichever of them is up, so `G` then `T` gives you game cards at
 across-the-room size, and pressing `T` again leaves the cards where they were. Each key only ever touches its
-own mode; `X` is the one that clears everything. An error drops you out of TV mode, so the load bar
-carrying the message is on screen.
+own mode; `X` is the one that clears everything. An error brings the load bar back on screen without
+taking you out of the mode you're in.
 
 ### Roster view
 
