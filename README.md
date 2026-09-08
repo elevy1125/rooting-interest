@@ -47,6 +47,9 @@ and where he's sitting.
 Pts, filters, sorting and search work the same, and both columns sort. Pts still follows league
 priority, now counting the leagues he's benched in.
 
+**Both sides** has no meaning here, since there's only one table, so the tag and the filter chip both
+go away while you're in the view. The chip comes back set the way you left it.
+
 ## Points
 
 The **Pts** column shows what the player scored this week. Sleeper's matchup payload carries

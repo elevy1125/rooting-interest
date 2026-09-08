@@ -966,7 +966,7 @@ function visibleRows(side){
   var s = state.sort[side];
   return state.rows.filter(function(r){
     if(sharesOf(r, side) === 0) return false;
-    if(state.bothOnly && !isBoth(r)) return false;
+    if(state.bothOnly && !state.rosterView && !isBoth(r)) return false;
     if(state.posOff[r.pos]) return false;
     if(state.statusOff[gameMode(r)]) return false;
     if(q){
@@ -1042,7 +1042,7 @@ function rowHTML(r, side, cols){
   var html = '<tr class="row' + (open ? " open" : "") + '" data-id="' + esc(r.id) + '">' +
     '<td class="name"><span class="caret">&#9656;</span> ' + esc(r.name) +
       (r.inj ? '<span class="inj">' + esc(r.inj) + "</span>" : "") +
-      (isBoth(r) ? '<span class="both">both sides</span>' : "") + "</td>";
+      (isBoth(r) && !state.rosterView ? '<span class="both">both sides</span>' : "") + "</td>";
   if(!state.group) html += '<td class="poscol"><span class="pos">' + esc(r.pos) + "</span></td>";
   html += '<td><span class="tw">' + esc(r.team) + "</span></td>";
 
@@ -1150,6 +1150,10 @@ function renderRosterView(){
   document.querySelector(".panes").classList.toggle("roster", on);
   el("forTitle").textContent = on ? "My roster" : "For me";
   el("rvBadge").hidden = !on;
+  // Both sides means one table against the other, which Roster view doesn't
+  // have. The chip goes away rather than switching off, so leaving the view
+  // hands back the filter you had.
+  el("bothToggle").hidden = on;
 }
 
 function setRosterView(on){
