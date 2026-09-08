@@ -45,6 +45,30 @@ instead, tagged `proj` and dimmed. The column has three states:
 
 A player whose team is on bye is tagged `bye`.
 
+### Status column
+
+The **Status** column shows where that player's NFL game is:
+
+| State | Shown |
+| --- | --- |
+| Yet to play | day and kickoff time in your own zone, e.g. `SUN 8:20 PM` |
+| Playing | live score and quarter, e.g. `17-14 Q3` (`OT` past the fourth) |
+| Finished | final score with an `F`, e.g. `24-20` |
+| Bye | `BYE` |
+
+The player's own team is always the left-hand number. All of it comes from the same ESPN scoreboard
+call the app already makes for game states, so live scores cost no extra requests and update with
+**Refresh scores**.
+
+Sorting the column goes by game progress first: playing, then yet to play, then finished. Within
+each of those, games still ahead of you run forward in time (soonest kickoff first) while finished
+ones run backward, so the game that just ended sits on top. Players in the same game always stay
+together. Byes sort to the bottom in both directions, since they have no game to order by. The
+**Game status** dropdown filters to any combination of these states.
+
+Note that grouping by position takes precedence over any column sort, so leave it off if you want
+live games at the very top of the table.
+
 For Sleeper leagues, projections come from `api.sleeper.com/projections/nfl/<season>/<week>` as **raw
 stats**, not points, so they're multiplied through each league's own `scoring_settings` — the same dot
 product Sleeper does server-side. That keeps projections and actuals in the same units, so a league
@@ -56,7 +80,9 @@ own), a player you hold on both will project differently depending on which leag
 your scoring priority.
 
 Game states come from ESPN's public scoreboard (`site.api.espn.com`), since Sleeper has no
-game-status endpoint. If either request fails the app falls back to actual points only.
+game-status endpoint. The same response carries kickoff time, quarter and score, which is what the
+Status column renders. If either request fails the app falls back to actual points only, and the
+Status column goes blank rather than guessing.
 
 **Refresh scores** re-pulls matchups, game states and projections while leaving the player database,
 league list and rosters cached, and the page auto-refreshes every two minutes while the tab is
@@ -71,8 +97,8 @@ aren't reflected here. Stat corrections can restate points days later.
 - **Group by position** (QB → RB → WR → TE → K → DEF, then everything else), toggled from inside
   the Positions dropdown
 - Every column sortable, independently per table; counts are **starts** (one per league a player starts in)
-- **Positions** and **Leagues** dropdowns, each a multi-select with select all / select none; the
-  button shows what's currently filtered for
+- **Positions**, **Leagues** and **Game status** dropdowns, each a multi-select with select all /
+  select none; the button shows what's currently filtered for
 - "Both sides only" view, with the count of those players on the button
 - Search across players/NFL teams/league names
 - Auto-detects the current NFL season and week; both are editable

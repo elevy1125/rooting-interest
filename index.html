@@ -58,6 +58,7 @@
       <div class="chips">
         <span class="chip" id="posToggle" title="Choose which positions show in the tables">Positions</span>
         <span class="chip" id="leagueToggle" title="Choose which leagues count toward the tables">Leagues</span>
+        <span class="chip" id="statusToggle" title="Choose which game states show in the tables">Game status</span>
         <span class="chip" id="bothToggle" title="Only players appearing on both sides of your matchups">Both sides only</span>
         <span class="chip" id="prioToggle" title="Choose which league's scoring the points column uses">Scoring priority</span>
       </div>
@@ -84,6 +85,18 @@
           title="QB, RB, WR, TE first, then everyone else">Group by position</button>
       </div>
       <ul class="lf-list" id="pfList"></ul>
+    </div>
+
+    <div class="prio" id="statusFilter" hidden>
+      <div class="prio-head">
+        <b>Game status</b>
+        <span>Uncheck a state to leave those players out of the tables below.</span>
+      </div>
+      <div class="lf-bulk">
+        <button class="ghost" id="gsAll" type="button">Select all</button>
+        <button class="ghost" id="gsNone" type="button">Select none</button>
+      </div>
+      <ul class="lf-list" id="gsList"></ul>
     </div>
 
     <div class="prio" id="leagueFilter" hidden>
@@ -122,6 +135,7 @@
                 <th data-key="name">Player</th>
                 <th data-key="pos" class="poscol">Pos</th>
                 <th data-key="team">NFL</th>
+                <th data-key="status" title="Kickoff before the game, score and quarter during, final score after">Status</th>
                 <th data-key="pts" class="num" title="Points scored under the highest-priority league this player appears in">Pts</th>
                 <th data-key="count" class="num" title="How many of your lineups this player is starting in">Starts</th>
               </tr>
@@ -144,6 +158,7 @@
                 <th data-key="name">Player</th>
                 <th data-key="pos" class="poscol">Pos</th>
                 <th data-key="team">NFL</th>
+                <th data-key="status" title="Kickoff before the game, score and quarter during, final score after">Status</th>
                 <th data-key="pts" class="num" title="Points scored under the highest-priority league this player appears in">Pts</th>
                 <th data-key="count" class="num" title="How many opponent lineups this player is starting in">Starts</th>
               </tr>

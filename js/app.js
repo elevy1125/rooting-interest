@@ -26,6 +26,7 @@ var state = {
   group: true,
   bothOnly: false,
   posOff: {},             // positions left out of the tables (default: none)
+  statusOff: {},          // game states left out of the tables (default: none)
   search: "",
   open: {},               // "side:playerId" -> bool
   leagueOrder: [],        // league ids, highest scoring priority first
@@ -322,7 +323,13 @@ function normTeam(t){
   return TEAM_ALIAS[t] || t;
 }
 
-// Which NFL teams have played, are playing, or haven't kicked off yet.
+function toScore(v){
+  var n = parseInt(v, 10);
+  return isNaN(n) ? null : n;
+}
+
+// Which NFL teams have played, are playing, or haven't kicked off yet — plus
+// kickoff time, quarter and score, which the Status column renders.
 // Sleeper has no game-state endpoint; ESPN's public scoreboard does and is CORS-open.
 function fetchGameStates(season, week, seasonType){
   loadProTeams();
@@ -332,13 +339,21 @@ function fetchGameStates(season, week, seasonType){
   return getJSON(url).then(function(j){
     var map = {};
     (j && j.events || []).forEach(function(ev){
-      var s = ev.status && ev.status.type ? ev.status.type.state : null;   // pre | in | post
+      var status = ev.status || {}, type = status.type || {};
       var comps = (ev.competitions && ev.competitions[0] && ev.competitions[0].competitors) || [];
-      comps.forEach(function(c){
-        if(c.team && c.team.abbreviation){
-          map[normTeam(c.team.abbreviation)] = s;
-          noteProTeam(c.team.id, c.team.abbreviation);   // keep the id map honest
-        }
+      var kick = Date.parse(ev.date || "");
+      comps.forEach(function(c, i){
+        if(!(c.team && c.team.abbreviation)) return;
+        var other = comps[1 - i];              // an NFL game always has exactly two sides
+        map[normTeam(c.team.abbreviation)] = {
+          state: type.state || null,           // pre | in | post
+          kickoff: isNaN(kick) ? null : kick,
+          period: status.period || 0,
+          score: toScore(c.score),
+          oppScore: other ? toScore(other.score) : null,
+          opp: other && other.team ? normTeam(other.team.abbreviation) : ""
+        };
+        noteProTeam(c.team.id, c.team.abbreviation);   // keep the id map honest
       });
     });
     return map;
@@ -398,15 +413,50 @@ function projFor(playerId, leagueId){
   return v;
 }
 
-// pre = not kicked off (show projection), in = playing, post = done, bye = no game
+function gameOf(row){
+  var t = normTeam(row.team);
+  return (!t || t === "FA") ? null : (state.gameState[t] || null);
+}
+
+// pre = not kicked off (show projection), in = playing, post = done, bye = no game.
+// "none" means we have no scoreboard at all, so nothing can be said either way.
 function gameMode(row){
   var t = normTeam(row.team);
   if(!t || t === "FA") return "none";
-  var s = state.gameState[t];
+  var g = state.gameState[t], s = g && g.state;
   if(s === "pre") return "pre";
   if(s === "in") return "in";
   if(s === "post") return "post";
   return Object.keys(state.gameState).length ? "bye" : "none";
+}
+
+var DAY_ABBR = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+function fmtKick(ms){
+  var d = new Date(ms);                       // renders in the viewer's own zone
+  var h = d.getHours(), m = d.getMinutes();
+  var ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12; if(h === 0) h = 12;
+  return DAY_ABBR[d.getDay()] + " " + h + ":" + (m < 10 ? "0" : "") + m + " " + ampm;
+}
+
+// Quarter while a game is live; 5+ is overtime.
+function fmtPeriod(p){ return !p ? "" : (p > 4 ? "OT" : "Q" + p); }
+
+// What the Status column shows: kickoff before, score + quarter during, final score after.
+// The player's own team is always the left-hand number.
+function statusCell(row){
+  var mode = gameMode(row), g = gameOf(row);
+  if(mode === "pre"){
+    return {main: g && g.kickoff ? fmtKick(g.kickoff) : "", note: "", cls: "pre"};
+  }
+  if(mode === "in" || mode === "post"){
+    var score = (g && g.score !== null && g.oppScore !== null)
+      ? g.score + "-" + g.oppScore : "";
+    return {main: score, note: mode === "in" ? fmtPeriod(g.period) : "F", cls: mode};
+  }
+  if(mode === "bye") return {main: "BYE", note: "", cls: "bye"};
+  return {main: "", note: "", cls: "none"};
 }
 
 /* ---------------- fetch + aggregate ---------------- */
@@ -782,6 +832,43 @@ function renderPosFilter(){
   chip.classList.toggle("filtered", on.length !== list.length);
 }
 
+// "none" is deliberately absent: with no scoreboard there's nothing to filter on,
+// so those rows stay visible whatever the boxes say.
+var STATUS_ORDER = ["pre", "in", "post", "bye"];
+var STATUS_LABEL = {pre:"Yet to play", "in":"Playing", post:"Finished", bye:"Bye"};
+
+// Only the states actually present this week get a row.
+function statusList(){
+  var seen = {};
+  state.rows.forEach(function(r){ seen[gameMode(r)] = true; });
+  return STATUS_ORDER.filter(function(s){ return seen[s]; });
+}
+
+function renderStatusFilter(){
+  var list = statusList();
+  el("gsList").innerHTML = list.map(function(s){
+    return '<li><label><input type="checkbox" data-status="' + esc(s) + '"' +
+      (state.statusOff[s] ? "" : " checked") + ">" +
+      '<span class="lname">' + esc(STATUS_LABEL[s]) + "</span></label></li>";
+  }).join("");
+
+  var on = list.filter(function(s){ return !state.statusOff[s]; });
+  var chip = el("statusToggle");
+  chip.textContent = on.length === list.length ? "Game status"
+    : !on.length ? "Game status: none"
+    : on.length <= 2 ? "Game status: " + on.map(function(s){ return STATUS_LABEL[s]; }).join(", ")
+    : "Game status: " + on.length + " of " + list.length;
+  chip.classList.toggle("filtered", on.length !== list.length);
+}
+
+/* Status sort: live games first (what you're watching), then games still to
+   come soonest-first, then finished ones most-recent-first. Players in the same
+   game always land together. */
+var STATUS_RANK = {"in":0, pre:1, post:2, bye:3, none:3};
+var STATUS_PIN = {bye:1, none:1};
+function statusRank(row){ return STATUS_RANK[gameMode(row)]; }
+function kickoffOf(row){ var g = gameOf(row); return g && g.kickoff; }
+
 function visibleRows(side){
   var q = state.search.trim().toLowerCase();
   var s = state.sort[side];
@@ -789,6 +876,7 @@ function visibleRows(side){
     if(countOf(r, side) === 0) return false;
     if(state.bothOnly && !isBoth(r)) return false;
     if(state.posOff[r.pos]) return false;
+    if(state.statusOff[gameMode(r)]) return false;
     if(q){
       var hay = (r.name + " " + r.pos + " " + r.team + " " + sideEntries(r, side)
         .map(function(e){ return e.league + " " + e.startedBy + " " + e.versus; })
@@ -798,7 +886,22 @@ function visibleRows(side){
     return true;
   }).sort(function(a, b){
     var c;
-    if(s.key === "count") c = countOf(a, side) - countOf(b, side);
+    if(s.key === "status"){
+      // Rows with no game to report carry no status, so they'd otherwise take
+      // turns capping whichever end you sorted from. Park them at the bottom
+      // both ways, before direction is applied.
+      var pa = STATUS_PIN[gameMode(a)] ? 1 : 0, pb = STATUS_PIN[gameMode(b)] ? 1 : 0;
+      if(pa !== pb) return pa - pb;
+      c = statusRank(a) - statusRank(b);
+      if(c === 0){
+        var t = (kickoffOf(a) || 0) - (kickoffOf(b) || 0);
+        // Games still ahead of you read forward in time (soonest first), but
+        // finished ones read backward, so the game that just ended is on top.
+        c = gameMode(a) === "post" ? -t : t;
+      }
+      if(c === 0) c = String(a.team).localeCompare(String(b.team));
+    }
+    else if(s.key === "count") c = countOf(a, side) - countOf(b, side);
     else if(s.key === "pts") c = ptsOf(a, side) - ptsOf(b, side);
     else if(s.key === "pos") c = posRank(a.pos) - posRank(b.pos) || a.pos.localeCompare(b.pos);
     else if(s.key === "name") c = a.name.localeCompare(b.name);
@@ -846,6 +949,11 @@ function rowHTML(r, side, cols){
   if(!state.group) html += '<td class="poscol"><span class="pos">' + esc(r.pos) + "</span></td>";
   html += '<td><span class="tw">' + esc(r.team) + "</span></td>";
 
+  var g = statusCell(r);
+  html += '<td class="gs gs-' + g.cls + '">' +
+    (g.main ? '<span class="gs-main">' + esc(g.main) + "</span>" : '<span class="nopts">—</span>') +
+    (g.note ? ' <span class="gs-note">' + esc(g.note) + "</span>" : "") + "</td>";
+
   var p = ptsInfo(r, side);
   var tag = p.mode === "pre" ? '<span class="tag proj">proj</span>'
           : p.mode === "in" ? '<span class="tag live">live</span>'
@@ -866,7 +974,7 @@ function rowHTML(r, side, cols){
 
 function renderSide(side){
   var rows = visibleRows(side);
-  var cols = state.group ? 4 : 5;
+  var cols = state.group ? 5 : 6;
   var tbody = el(side === "for" ? "tbodyFor" : "tbodyAgainst");
   var table = document.querySelector('table.grid[data-side="' + side + '"]');
   var html = [];
@@ -1045,6 +1153,7 @@ function renderUpdated(){
 function renderAll(m){
   if(m) renderFooter(m);
   renderPosFilter();
+  renderStatusFilter();
   renderPrio();
   renderLeagueFilter();
   renderBothToggle();
@@ -1133,6 +1242,28 @@ function wire(){
   el("pfNone").addEventListener("click", function(){
     posList().forEach(function(p){ state.posOff[p] = true; });
     renderPosFilter(); renderTables();
+  });
+
+  el("statusToggle").addEventListener("click", function(){
+    var p = el("statusFilter");
+    p.hidden = !p.hidden;
+    this.classList.toggle("open", !p.hidden);
+  });
+  el("gsList").addEventListener("change", function(e){
+    var cb = e.target.closest("input[type=checkbox]");
+    if(!cb) return;
+    var s = cb.getAttribute("data-status");
+    if(cb.checked) delete state.statusOff[s];
+    else state.statusOff[s] = true;
+    renderStatusFilter(); renderTables();
+  });
+  el("gsAll").addEventListener("click", function(){
+    state.statusOff = {};
+    renderStatusFilter(); renderTables();
+  });
+  el("gsNone").addEventListener("click", function(){
+    statusList().forEach(function(s){ state.statusOff[s] = true; });
+    renderStatusFilter(); renderTables();
   });
 
   el("groupToggle").addEventListener("click", function(){
@@ -1273,11 +1404,14 @@ function wire(){
     el("leagueToggle").classList.remove("open");
     el("posFilter").hidden = true;
     el("posToggle").classList.remove("open");
+    el("statusFilter").hidden = true;
+    el("statusToggle").classList.remove("open");
     results.classList.remove("on");
     el("go").disabled = true;
     state.open = {};
     state.excluded = {};
     state.posOff = {};
+    state.statusOff = {};
 
     try{ localStorage.setItem("sleeper_last_user", username); }catch(err){}
 

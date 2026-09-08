@@ -147,6 +147,13 @@ tr.row:hover>td,tr.row.open>td{background:var(--panel2)}
 .pane-for .cnt{color:var(--for)}
 .pane-against .cnt{color:var(--agn)}
 
+td.gs{font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted)}
+td.gs .gs-note{font-size:10px;text-transform:uppercase;letter-spacing:.05em;opacity:.75}
+td.gs-in .gs-main{color:var(--accent);font-weight:700}
+td.gs-in .gs-note{color:var(--accent)}
+td.gs-post .gs-main{color:var(--txt);font-weight:600}
+td.gs-bye .gs-main{opacity:.6}
+
 td.pts{line-height:1.25}
 td.pts .pv{font-weight:700;font-variant-numeric:tabular-nums}
 td.pts .pv.isproj{font-weight:600;color:var(--muted)}
