@@ -9,7 +9,6 @@
 
 var API = "https://api.sleeper.app/v1";
 var ESPN = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons";
-var ESPN_SITE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
 var PKEY = "sleeper_players_slim_v3", PTS = "sleeper_players_ts_v3";
 var EKEY = "ri_espn_leagues_v1", TKEY = "ri_espn_teams_v1";
 var DAY = 86400000;
@@ -43,6 +42,7 @@ var state = {
   projStats: {},          // player id -> projected raw stats
   projMemo: {},           // "playerId|leagueId" -> projected points
   excluded: {},           // league ids left out of the tables (default: none)
+  season: null,           // current NFL season, from /state/nfl
   seasonType: "regular",
   updatedAt: null,
   autoTimer: null,
@@ -59,7 +59,20 @@ function setStatus(msg, pct){
   bar.style.width = (pct == null ? 0 : Math.max(0, Math.min(100, pct))) + "%";
 }
 function clearStatus(){ statusBox.classList.remove("on"); bar.style.width = "0%"; }
-function showError(msg){ errBox.textContent = msg; errBox.classList.add("on"); }
+
+function setSetupCollapsed(on){
+  var box = el("setup"), btn = el("setupToggle");
+  box.classList.toggle("collapsed", on);
+  btn.textContent = on ? "Show setup" : "Hide setup";
+  btn.setAttribute("aria-expanded", on ? "false" : "true");
+}
+
+// The error box lives inside the load bar, so a collapsed bar would swallow it.
+function showError(msg){
+  errBox.textContent = msg;
+  errBox.classList.add("on");
+  setSetupCollapsed(false);
+}
 function clearError(){ errBox.classList.remove("on"); errBox.textContent = ""; }
 function esc(s){
   return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
@@ -69,12 +82,12 @@ function esc(s){
 
 function getJSON(url){
   return fetch(url, {cache:"no-store"}).catch(function(){
-    throw new Error("Couldn't reach the Sleeper API. Check your connection — and if you opened this " +
-      "file directly from disk and it keeps failing, serve the folder instead (in Terminal: cd to the " +
-      "folder, run `python3 -m http.server 8000`, then open http://localhost:8000).");
+    throw new Error("Couldn't reach the API. Check your connection. If you opened this file from " +
+      "disk, serve the folder instead: run `python3 -m http.server 8000` in it, then open " +
+      "http://localhost:8000.");
   }).then(function(r){
     if(r.status === 404) return null;
-    if(!r.ok) throw new Error("Sleeper API returned " + r.status + " for " + url);
+    if(!r.ok) throw new Error("API returned " + r.status + " for " + url);
     return r.text().then(function(t){
       if(!t || t === "null") return null;
       try { return JSON.parse(t); } catch(e){ throw new Error("Bad JSON from " + url); }
@@ -148,7 +161,7 @@ function loadPlayers(){
   if(state.players) return Promise.resolve(state.players);
   var cached = readCache();
   if(cached) return Promise.resolve(indexPlayers(cached));
-  setStatus("Downloading the NFL player database (~5 MB, cached for 24 hours)…", 5);
+  setStatus("Downloading the player database (~5 MB, cached 24 hours)…", 5);
   return getJSON(API + "/players/nfl").then(function(all){
     if(!all) throw new Error("Could not load the NFL player database.");
     var slim = {}, id, p, name;
@@ -214,8 +227,8 @@ function espnLeagueURL(season, id, views, week){
 }
 
 function espnError(status){
-  if(status === 401) return "that league is private — ESPN only allows browser access to public leagues";
-  if(status === 404) return "no ESPN league with that ID for this season";
+  if(status === 401) return "that league is private. ESPN allows browser access to public leagues only";
+  if(status === 404) return "no ESPN league with that ID this season";
   return "ESPN returned " + status;
 }
 
@@ -470,7 +483,7 @@ function loadContext(username, season, week){
     : getJSON(API + "/user/" + encodeURIComponent(username)).then(function(u){
         if(!u || !u.user_id) throw new Error('No Sleeper user found named "' + username + '".');
         user = u;
-        setStatus("Finding " + (u.display_name || username) + "'s " + season + " leagues…", 12);
+        setStatus("Finding " + season + " leagues…", 12);
         return getJSON(API + "/user/" + u.user_id + "/leagues/nfl/" + season);
       }).then(function(ls){
         leagues = ls || [];
@@ -484,7 +497,7 @@ function loadContext(username, season, week){
             getJSON(API + "/league/" + lg.league_id + "/users")
           ]).then(function(res){ return {rosters:res[0] || [], users:res[1] || []}; });
         }, function(done, total){
-          setStatus("Loading leagues… " + done + " of " + total, 18 + Math.round((done / total) * 40));
+          setStatus("Leagues… " + done + " of " + total, 18 + Math.round((done / total) * 40));
         });
       });
 
@@ -498,7 +511,7 @@ function loadContext(username, season, week){
     state.ctx = {user:user, season:season, week:week, leagues:leagues, leagueData:data, espn:[]};
 
     if(!state.espnConfig.length) return state.ctx;
-    setStatus("Loading ESPN leagues…", 60);
+    setStatus("ESPN leagues…", 60);
     return loadProTeams().then(function(){
       return pool(state.espnConfig, 3, function(cfg){
         return fetchEspnTeams(season, cfg.id).then(function(info){
@@ -530,7 +543,7 @@ function esKey(id){ return "es:" + id; }
 function loadScores(quiet){
   var ctx = state.ctx;
   if(!ctx) return Promise.reject(new Error("Nothing loaded yet."));
-  if(!quiet) setStatus("Loading matchups…", 70);
+  if(!quiet) setStatus("Matchups…", 70);
 
   return Promise.all([
     pool(ctx.leagues, 5, function(lg){
@@ -563,7 +576,7 @@ function loadScores(quiet){
       });
     });
 
-    if(!quiet) setStatus("Loading scores and projections…", 88);
+    if(!quiet) setStatus("Scores and projections…", 88);
     return Promise.all([
       fetchGameStates(ctx.season, ctx.week, state.seasonType),
       fetchProjections(ctx.season, ctx.week, state.seasonType, Object.keys(positions))
@@ -584,136 +597,132 @@ function run(username, season, week){
 function aggregate(matchupsByLeague){
   var ctx = state.ctx, userId = ctx.user.user_id, week = ctx.week;
   var leagues = ctx.leagues;
-  {
-    var byPlayer = {}, active = [];
+  var byPlayer = {}, active = [];
 
-    function add(pid, side, c){
-      if(!pid || pid === "0") return;
-      var row = byPlayer[pid];
-      if(!row){
-        var info = playerInfo(pid);
-        row = byPlayer[pid] = {
-          id:pid, name:info.name, pos:info.pos, team:info.team, inj:info.inj,
-          forCount:0, againstCount:0, total:0, net:0, entries:[]
-        };
-      }
-      if(side === "for") row.forCount++; else row.againstCount++;
-      row.total = row.forCount + row.againstCount;
-      row.net = row.forCount - row.againstCount;
-      var pts = c.points && Object.prototype.hasOwnProperty.call(c.points, pid)
-        ? Number(c.points[pid]) : null;
-      if(typeof c.directPoints === "number") pts = c.directPoints;
-      row.entries.push({
-        league: c.league, leagueId: c.leagueId, side: side, platform: c.platform || "sleeper",
-        startedBy: side === "for" ? c.myTeam : c.oppTeam,
-        versus:    side === "for" ? c.oppTeam : c.myTeam,
-        manager:   side === "for" ? c.myManager : c.oppManager,
-        points: (pts === null || isNaN(pts)) ? null : pts,
-        proj: typeof c.directProj === "number" ? c.directProj : undefined
-      });
-    }
-
-    leagues.forEach(function(lg){
-      var b = ctx.leagueData[lg.league_id] || {rosters:[], users:[]};
-      b.matchups = matchupsByLeague[lg.league_id] || [];
-      var name = lg.name || ("League " + lg.league_id);
-      var usersById = {}, rostersById = {};
-      b.users.forEach(function(u){ usersById[u.user_id] = u; });
-      b.rosters.forEach(function(r){ rostersById[r.roster_id] = r; });
-
-      var mine = myRoster(b.rosters, userId);
-      if(!mine) return;
-
-      var myM = null, i;
-      for(i = 0; i < b.matchups.length; i++){
-        if(b.matchups[i].roster_id === mine.roster_id){ myM = b.matchups[i]; break; }
-      }
-      if(!myM) return;
-
-      var opps = b.matchups.filter(function(m){
-        return m.matchup_id != null && m.matchup_id === myM.matchup_id && m.roster_id !== mine.roster_id;
-      });
-
-      var myTeam = teamNameFor(mine, usersById);
-      var myManager = (usersById[mine.owner_id] || {}).display_name || "";
-      var myStarters = (myM.starters || []).filter(function(p){ return p && p !== "0"; });
-      if(!myStarters.length) return;
-
-      var oppRoster = opps.length ? rostersById[opps[0].roster_id] : null;
-      var oppTeam = opps.length ? teamNameFor(oppRoster, usersById) : "— no opponent —";
-      var oppManager = oppRoster ? ((usersById[oppRoster.owner_id] || {}).display_name || "") : "";
-
-      active.push({id:lgKey(lg.league_id), name:name, platform:"sleeper"});
-
-      myStarters.forEach(function(pid){
-        add(pid, "for", {league:name, leagueId:lgKey(lg.league_id), myTeam:myTeam, oppTeam:oppTeam,
-          myManager:myManager, oppManager:oppManager, points: myM.players_points});
-      });
-
-      opps.forEach(function(om){
-        var r = rostersById[om.roster_id];
-        var c = {
-          league:name, leagueId:lgKey(lg.league_id), myTeam:myTeam, oppTeam:teamNameFor(r, usersById),
-          myManager:myManager,
-          oppManager: r ? ((usersById[r.owner_id] || {}).display_name || "") : "",
-          points: om.players_points
-        };
-        (om.starters || []).forEach(function(pid){ add(pid, "against", c); });
-      });
-    });
-
-    /* ---- ESPN leagues ---- */
-    (ctx.espn || []).forEach(function(l){
-      var name = l.name || ("ESPN league " + l.id);
-      if(l.error || !l.teamId) return;
-
-      var teamsById = {};
-      (l.teams || []).forEach(function(t){ teamsById[t.id] = t; });
-      var nameOf = function(id){ return (teamsById[id] && teamsById[id].name) || ("Team " + id); };
-      var mgrOf  = function(id){ return (teamsById[id] && teamsById[id].manager) || ""; };
-
-      var mine = null, side = null;
-      (l.schedule || []).forEach(function(m){
-        if(m.matchupPeriodId !== week) return;
-        if(m.home && m.home.teamId === l.teamId){ mine = m; side = "home"; }
-        else if(m.away && m.away.teamId === l.teamId){ mine = m; side = "away"; }
-      });
-      if(!mine) return;
-
-      var me = mine[side], them = mine[side === "home" ? "away" : "home"];
-      var starters = function(s){
-        var ents = (s && s.rosterForCurrentScoringPeriod && s.rosterForCurrentScoringPeriod.entries) || [];
-        return ents.filter(function(e){ return !BENCH_SLOTS[e.lineupSlotId]; }).map(espnEntry);
+  function add(pid, side, c){
+    if(!pid || pid === "0") return;
+    var row = byPlayer[pid];
+    if(!row){
+      var info = playerInfo(pid);
+      // Counts aren't stored: they're derived from `entries` so the league
+      // filter can change them without re-aggregating.
+      row = byPlayer[pid] = {
+        id:pid, name:info.name, pos:info.pos, team:info.team, inj:info.inj, entries:[]
       };
-      var mineStarters = starters(me);
-      if(!mineStarters.length) return;
+    }
+    var pts = c.points && Object.prototype.hasOwnProperty.call(c.points, pid)
+      ? Number(c.points[pid]) : null;
+    if(typeof c.directPoints === "number") pts = c.directPoints;
+    row.entries.push({
+      league: c.league, leagueId: c.leagueId, side: side, platform: c.platform || "sleeper",
+      startedBy: side === "for" ? c.myTeam : c.oppTeam,
+      versus:    side === "for" ? c.oppTeam : c.myTeam,
+      manager:   side === "for" ? c.myManager : c.oppManager,
+      points: (pts === null || isNaN(pts)) ? null : pts,
+      proj: typeof c.directProj === "number" ? c.directProj : undefined
+    });
+  }
 
-      var myTeam = nameOf(l.teamId);
-      var oppTeam = them ? nameOf(them.teamId) : "— no opponent —";
-      active.push({id:esKey(l.id), name:name, platform:"espn"});
+  leagues.forEach(function(lg){
+    var b = ctx.leagueData[lg.league_id] || {rosters:[], users:[]};
+    b.matchups = matchupsByLeague[lg.league_id] || [];
+    var name = lg.name || ("League " + lg.league_id);
+    var usersById = {}, rostersById = {};
+    b.users.forEach(function(u){ usersById[u.user_id] = u; });
+    b.rosters.forEach(function(r){ rostersById[r.roster_id] = r; });
 
-      var base = {league:name, leagueId:esKey(l.id), platform:"espn",
-        myTeam:myTeam, oppTeam:oppTeam,
-        myManager: mgrOf(l.teamId), oppManager: them ? mgrOf(them.teamId) : ""};
+    var mine = myRoster(b.rosters, userId);
+    if(!mine) return;
 
-      mineStarters.forEach(function(p){
-        var c = {}; for(var k in base) c[k] = base[k];
-        c.directPoints = p.points; c.directProj = p.proj;
-        add(p.id, "for", c);
-      });
-      if(them) starters(them).forEach(function(p){
-        var c = {}; for(var k in base) c[k] = base[k];
-        c.directPoints = p.points; c.directProj = p.proj;
-        add(p.id, "against", c);
-      });
+    var myM = null, i;
+    for(i = 0; i < b.matchups.length; i++){
+      if(b.matchups[i].roster_id === mine.roster_id){ myM = b.matchups[i]; break; }
+    }
+    if(!myM) return;
+
+    var opps = b.matchups.filter(function(m){
+      return m.matchup_id != null && m.matchup_id === myM.matchup_id && m.roster_id !== mine.roster_id;
     });
 
-    return {
-      user: ctx.user,
-      rows: Object.keys(byPlayer).map(function(k){ return byPlayer[k]; }),
-      activeLeagues:active, season:ctx.season, week:week
+    var myTeam = teamNameFor(mine, usersById);
+    var myManager = (usersById[mine.owner_id] || {}).display_name || "";
+    var myStarters = (myM.starters || []).filter(function(p){ return p && p !== "0"; });
+    if(!myStarters.length) return;
+
+    var oppRoster = opps.length ? rostersById[opps[0].roster_id] : null;
+    var oppTeam = opps.length ? teamNameFor(oppRoster, usersById) : "— no opponent —";
+    var oppManager = oppRoster ? ((usersById[oppRoster.owner_id] || {}).display_name || "") : "";
+
+    active.push({id:lgKey(lg.league_id), name:name, platform:"sleeper"});
+
+    myStarters.forEach(function(pid){
+      add(pid, "for", {league:name, leagueId:lgKey(lg.league_id), myTeam:myTeam, oppTeam:oppTeam,
+        myManager:myManager, oppManager:oppManager, points: myM.players_points});
+    });
+
+    opps.forEach(function(om){
+      var r = rostersById[om.roster_id];
+      var c = {
+        league:name, leagueId:lgKey(lg.league_id), myTeam:myTeam, oppTeam:teamNameFor(r, usersById),
+        myManager:myManager,
+        oppManager: r ? ((usersById[r.owner_id] || {}).display_name || "") : "",
+        points: om.players_points
+      };
+      (om.starters || []).forEach(function(pid){ add(pid, "against", c); });
+    });
+  });
+
+  /* ---- ESPN leagues ---- */
+  (ctx.espn || []).forEach(function(l){
+    var name = l.name || ("ESPN league " + l.id);
+    if(l.error || !l.teamId) return;
+
+    var teamsById = {};
+    (l.teams || []).forEach(function(t){ teamsById[t.id] = t; });
+    var nameOf = function(id){ return (teamsById[id] && teamsById[id].name) || ("Team " + id); };
+    var mgrOf  = function(id){ return (teamsById[id] && teamsById[id].manager) || ""; };
+
+    var mine = null, side = null;
+    (l.schedule || []).forEach(function(m){
+      if(m.matchupPeriodId !== week) return;
+      if(m.home && m.home.teamId === l.teamId){ mine = m; side = "home"; }
+      else if(m.away && m.away.teamId === l.teamId){ mine = m; side = "away"; }
+    });
+    if(!mine) return;
+
+    var me = mine[side], them = mine[side === "home" ? "away" : "home"];
+    var starters = function(s){
+      var ents = (s && s.rosterForCurrentScoringPeriod && s.rosterForCurrentScoringPeriod.entries) || [];
+      return ents.filter(function(e){ return !BENCH_SLOTS[e.lineupSlotId]; }).map(espnEntry);
     };
-  }
+    var mineStarters = starters(me);
+    if(!mineStarters.length) return;
+
+    var myTeam = nameOf(l.teamId);
+    var oppTeam = them ? nameOf(them.teamId) : "— no opponent —";
+    active.push({id:esKey(l.id), name:name, platform:"espn"});
+
+    var base = {league:name, leagueId:esKey(l.id), platform:"espn",
+      myTeam:myTeam, oppTeam:oppTeam,
+      myManager: mgrOf(l.teamId), oppManager: them ? mgrOf(them.teamId) : ""};
+
+    mineStarters.forEach(function(p){
+      var c = {}; for(var k in base) c[k] = base[k];
+      c.directPoints = p.points; c.directProj = p.proj;
+      add(p.id, "for", c);
+    });
+    if(them) starters(them).forEach(function(p){
+      var c = {}; for(var k in base) c[k] = base[k];
+      c.directPoints = p.points; c.directProj = p.proj;
+      add(p.id, "against", c);
+    });
+  });
+
+  return {
+    user: ctx.user,
+    rows: Object.keys(byPlayer).map(function(k){ return byPlayer[k]; }),
+    activeLeagues:active, season:ctx.season, week:week
+  };
 }
 
 /* ---------------- rendering ---------------- */
@@ -814,23 +823,62 @@ function posList(){
   });
 }
 
-function renderPosFilter(){
-  var list = posList();
-  el("pfList").innerHTML = list.map(function(p){
-    return '<li><label><input type="checkbox" data-pos="' + esc(p) + '"' +
-      (state.posOff[p] ? "" : " checked") + ">" +
-      '<span class="lname">' + esc(p) + "</span></label></li>";
-  }).join("");
+/* Positions and Status are the same widget over different values: a list of
+   checkboxes, select all/none, and a chip naming what's on. `key` is the state
+   object holding the values that are switched OFF. `chipText` overrides the
+   default label. Returns its own render function. */
+function multiFilter(cfg){
+  var chip = el(cfg.toggle), panel = el(cfg.panel), list = el(cfg.list);
 
-  var on = list.filter(function(p){ return !state.posOff[p]; });
-  var chip = el("posToggle");
-  // Name the positions while they still fit, then fall back to a count.
-  chip.textContent = on.length === list.length ? "Positions"
-    : !on.length ? "Positions: none"
-    : on.length <= 3 ? "Positions: " + on.join(", ")
-    : "Positions: " + on.length + " of " + list.length;
-  chip.classList.toggle("filtered", on.length !== list.length);
+  function off(){ return state[cfg.key]; }
+  function label(v){ return cfg.label ? cfg.label(v) : v; }
+
+  // Name what's on while the names still fit, then fall back to a count.
+  function defaultText(on, items){
+    return on.length === items.length ? cfg.title
+      : !on.length ? cfg.title + ": none"
+      : on.length <= cfg.maxNames ? cfg.title + ": " + on.map(label).join(", ")
+      : cfg.title + ": " + on.length + " of " + items.length;
+  }
+
+  function render(){
+    var items = cfg.items();
+    list.innerHTML = items.map(function(v, i){
+      var id = cfg.list + i;
+      return '<li><label for="' + id + '"><input type="checkbox" id="' + id +
+        '" data-v="' + esc(v) + '"' + (off()[v] ? "" : " checked") + ">" +
+        '<span class="lname">' + esc(label(v)) + "</span></label></li>";
+    }).join("");
+
+    var on = items.filter(function(v){ return !off()[v]; });
+    chip.textContent = (cfg.chipText || defaultText)(on, items);
+    chip.classList.toggle("filtered", on.length !== items.length);
+  }
+
+  function apply(){ render(); renderTables(); }
+
+  chip.addEventListener("click", function(){
+    panel.hidden = !panel.hidden;
+    this.classList.toggle("open", !panel.hidden);
+  });
+  list.addEventListener("change", function(e){
+    var cb = e.target.closest("input[type=checkbox]");
+    if(!cb) return;
+    var v = cb.getAttribute("data-v");
+    if(cb.checked) delete off()[v];
+    else off()[v] = true;
+    apply();
+  });
+  el(cfg.all).addEventListener("click", function(){ state[cfg.key] = {}; apply(); });
+  el(cfg.none).addEventListener("click", function(){
+    cfg.items().forEach(function(v){ off()[v] = true; });
+    apply();
+  });
+
+  return render;
 }
+
+var renderPosFilter, renderStatusFilter;
 
 // "none" is deliberately absent: with no scoreboard there's nothing to filter on,
 // so those rows stay visible whatever the boxes say.
@@ -844,22 +892,6 @@ function statusList(){
   return STATUS_ORDER.filter(function(s){ return seen[s]; });
 }
 
-function renderStatusFilter(){
-  var list = statusList();
-  el("gsList").innerHTML = list.map(function(s){
-    return '<li><label><input type="checkbox" data-status="' + esc(s) + '"' +
-      (state.statusOff[s] ? "" : " checked") + ">" +
-      '<span class="lname">' + esc(STATUS_LABEL[s]) + "</span></label></li>";
-  }).join("");
-
-  var on = list.filter(function(s){ return !state.statusOff[s]; });
-  var chip = el("statusToggle");
-  chip.textContent = on.length === list.length ? "Game status"
-    : !on.length ? "Game status: none"
-    : on.length <= 2 ? "Game status: " + on.map(function(s){ return STATUS_LABEL[s]; }).join(", ")
-    : "Game status: " + on.length + " of " + list.length;
-  chip.classList.toggle("filtered", on.length !== list.length);
-}
 
 /* Status sort: live games first (what you're watching), then games still to
    come soonest-first, then finished ones most-recent-first. Players in the same
@@ -915,7 +947,7 @@ function detailHTML(row, side, cols){
   // The "for" table shows who you're up against; the "against" table doesn't need
   // a column repeating your own team name on every row.
   var showFacing = side === "for";
-  var top = state.leagueOrder[0];
+  var top = topIncluded();
   var mode = gameMode(row);
   var body = sideEntries(row, side)
     .sort(function(a, b){
@@ -1019,35 +1051,40 @@ function renderSide(side){
 
 function renderTables(){ renderSide("for"); renderSide("against"); }
 
-function renderPrio(){
-  var list = el("prioList");
-  list.innerHTML = state.leagueOrder.map(function(id, i){
-    return '<li draggable="true" data-id="' + esc(id) + '">' +
+// The league a player's Pts come from: highest in the order that's still
+// included. Leaving out the top league promotes the next one rather than
+// silently pointing at a league that isn't in the tables.
+function topIncluded(){
+  for(var i = 0; i < state.leagueOrder.length; i++){
+    if(included(state.leagueOrder[i])) return state.leagueOrder[i];
+  }
+  return null;
+}
+
+// One list does both jobs: the checkbox includes a league in the tables, the
+// order sets which league's scoring the Pts column uses.
+function renderLeagueFilter(){
+  var lead = topIncluded();
+  el("lfList").innerHTML = state.leagueOrder.map(function(id, i){
+    var espn = id.indexOf("es:") === 0, on = included(id);
+    return '<li draggable="true" data-id="' + esc(id) + '"' +
+      (on ? "" : ' class="off"') + ">" +
       '<span class="grip" aria-hidden="true">⋮⋮</span>' +
+      '<input type="checkbox" id="lfcb' + i + '" data-id="' + esc(id) + '"' +
+        (on ? " checked" : "") + ">" +
       '<span class="rank">' + (i + 1) + "</span>" +
-      '<span class="lname">' + esc(state.leagueNames[id] || id) +
-        '<span class="plat ' + (id.indexOf("es:") === 0 ? "espn" : "sleeper") + '">' +
-        (id.indexOf("es:") === 0 ? "ESPN" : "Sleeper") + "</span></span>" +
+      '<label class="lname' + (id === lead ? " lead" : "") + '" for="lfcb' + i + '">' +
+        esc(state.leagueNames[id] || id) +
+        '<span class="plat ' + (espn ? "espn" : "sleeper") + '">' +
+        (espn ? "ESPN" : "Sleeper") + "</span>" +
+        (id === lead ? '<span class="scoring">scoring</span>' : "") +
+      "</label>" +
       '<span class="moves">' +
         '<button type="button" class="mv" data-dir="-1" aria-label="Move up"' +
           (i === 0 ? " disabled" : "") + ">↑</button>" +
         '<button type="button" class="mv" data-dir="1" aria-label="Move down"' +
           (i === state.leagueOrder.length - 1 ? " disabled" : "") + ">↓</button>" +
       "</span></li>";
-  }).join("");
-  el("prioToggle").textContent = "Scoring: " +
-    (state.leagueNames[state.leagueOrder[0]] || "priority");
-}
-
-function renderLeagueFilter(){
-  var list = el("lfList");
-  list.innerHTML = state.leagueOrder.map(function(id){
-    var espn = id.indexOf("es:") === 0;
-    return '<li><label><input type="checkbox" data-id="' + esc(id) + '"' +
-      (included(id) ? " checked" : "") + ">" +
-      '<span class="lname">' + esc(state.leagueNames[id] || id) +
-      '<span class="plat ' + (espn ? "espn" : "sleeper") + '">' + (espn ? "ESPN" : "Sleeper") +
-      "</span></span></label></li>";
   }).join("");
 
   var on = state.leagueOrder.filter(included).length, all = state.leagueOrder.length;
@@ -1081,7 +1118,7 @@ function moveLeague(id, delta){
   var to = from + delta;
   if(from < 0 || to < 0 || to >= state.leagueOrder.length) return;
   state.leagueOrder.splice(to, 0, state.leagueOrder.splice(from, 1)[0]);
-  rebuildOrderIndex(); saveOrder(); renderPrio(); renderTables();
+  rebuildOrderIndex(); saveOrder(); renderLeagueFilter(); renderTables();
 }
 function placeLeague(id, beforeId){
   if(id === beforeId) return;
@@ -1090,7 +1127,7 @@ function placeLeague(id, beforeId){
   if(at < 0) at = order.length;
   order.splice(at, 0, id);
   state.leagueOrder = order;
-  rebuildOrderIndex(); saveOrder(); renderPrio(); renderTables();
+  rebuildOrderIndex(); saveOrder(); renderLeagueFilter(); renderTables();
 }
 
 function renderEspnConfig(){
@@ -1126,14 +1163,14 @@ function addEspnLeague(id){
   if(state.espnConfig.some(function(c){ return c.id === id; })){
     espnMsg("That league is already added.", true); return;
   }
-  var season = parseInt(el("season").value, 10) || new Date().getFullYear();
+  var season = state.season;
   espnMsg("Checking…");
   loadProTeams().then(function(){ return fetchEspnTeams(season, id); }).then(function(info){
     state.espnConfig.push({id:id, teamId:null, name:info.name, teams:info.teams});
     saveEspnConfig();
     renderEspnConfig();
     el("espnId").value = "";
-    espnMsg("Added " + info.name + " — now pick your team.");
+    espnMsg("Added " + info.name + ". Now pick your team.");
   }).catch(function(err){
     espnMsg("Couldn't add it: " + (err.message || err), true);
   });
@@ -1154,7 +1191,6 @@ function renderAll(m){
   if(m) renderFooter(m);
   renderPosFilter();
   renderStatusFilter();
-  renderPrio();
   renderLeagueFilter();
   renderBothToggle();
   renderTables();
@@ -1222,54 +1258,32 @@ function wire(){
 
   el("search").addEventListener("input", function(e){ state.search = e.target.value; renderTables(); });
 
-  el("posToggle").addEventListener("click", function(){
-    var p = el("posFilter");
-    p.hidden = !p.hidden;
-    this.classList.toggle("open", !p.hidden);
+  renderPosFilter = multiFilter({
+    toggle:"posToggle", panel:"posFilter", list:"pfList", all:"pfAll", none:"pfNone",
+    key:"posOff", title:"Positions", items:posList,
+    // Position codes are short, so list them all rather than falling back to a count.
+    chipText:function(on, items){
+      return on.length === items.length ? "All Positions"
+        : !on.length ? "No Positions"
+        : on.join(", ");
+    }
   });
-  el("pfList").addEventListener("change", function(e){
-    var cb = e.target.closest("input[type=checkbox]");
-    if(!cb) return;
-    var pos = cb.getAttribute("data-pos");
-    if(cb.checked) delete state.posOff[pos];
-    else state.posOff[pos] = true;
-    renderPosFilter(); renderTables();
-  });
-  el("pfAll").addEventListener("click", function(){
-    state.posOff = {};
-    renderPosFilter(); renderTables();
-  });
-  el("pfNone").addEventListener("click", function(){
-    posList().forEach(function(p){ state.posOff[p] = true; });
-    renderPosFilter(); renderTables();
-  });
-
-  el("statusToggle").addEventListener("click", function(){
-    var p = el("statusFilter");
-    p.hidden = !p.hidden;
-    this.classList.toggle("open", !p.hidden);
-  });
-  el("gsList").addEventListener("change", function(e){
-    var cb = e.target.closest("input[type=checkbox]");
-    if(!cb) return;
-    var s = cb.getAttribute("data-status");
-    if(cb.checked) delete state.statusOff[s];
-    else state.statusOff[s] = true;
-    renderStatusFilter(); renderTables();
-  });
-  el("gsAll").addEventListener("click", function(){
-    state.statusOff = {};
-    renderStatusFilter(); renderTables();
-  });
-  el("gsNone").addEventListener("click", function(){
-    statusList().forEach(function(s){ state.statusOff[s] = true; });
-    renderStatusFilter(); renderTables();
+  renderStatusFilter = multiFilter({
+    toggle:"statusToggle", panel:"statusFilter", list:"gsList", all:"gsAll", none:"gsNone",
+    key:"statusOff", title:"Status", maxNames:2, items:statusList,
+    label:function(v){ return STATUS_LABEL[v]; }
   });
 
   el("groupToggle").addEventListener("click", function(){
     state.group = !state.group;
     this.classList.toggle("on", state.group);
     renderTables();
+  });
+
+  // Fold the load bar away once the tables are up. Always starts open, and the
+  // choice isn't persisted, so a fresh visit never hides the form from you.
+  el("setupToggle").addEventListener("click", function(){
+    setSetupCollapsed(!el("setup").classList.contains("collapsed"));
   });
 
   el("leagueToggle").addEventListener("click", function(){
@@ -1291,13 +1305,7 @@ function wire(){
     refreshFiltered();
   });
 
-  el("prioToggle").addEventListener("click", function(){
-    var p = el("prio");
-    p.hidden = !p.hidden;
-    this.classList.toggle("on", !p.hidden);
-  });
-
-  var list = el("prioList"), dragId = null;
+  var list = el("lfList"), dragId = null;
   list.addEventListener("click", function(e){
     var btn = e.target.closest("button.mv");
     if(!btn) return;
@@ -1360,7 +1368,7 @@ function wire(){
       if(c.id === id) c.teamId = sel.value ? parseInt(sel.value, 10) : null;
     });
     saveEspnConfig();
-    espnMsg("Saved. Load matchups to pick it up.");
+    espnMsg("Saved. Reload matchups to apply.");
   });
   el("espnList").addEventListener("click", function(e){
     if(!e.target.closest("button.el-rm")) return;
@@ -1382,24 +1390,22 @@ function wire(){
   el("refresh").addEventListener("click", function(){
     try{ localStorage.removeItem(PKEY); localStorage.removeItem(PTS); }catch(e){}
     state.players = null;
-    setStatus("Player database cleared — it will re-download on your next lookup.", 100);
+    setStatus("Player database cleared. It re-downloads on your next lookup.", 100);
     setTimeout(clearStatus, 2500);
   });
 
   el("form").addEventListener("submit", function(e){
     e.preventDefault();
     var username = el("username").value.trim();
-    var season = parseInt(el("season").value, 10);
+    var season = state.season;
     var week = parseInt(el("week").value, 10);
     if(!username && !state.espnConfig.length){
       showError("Enter a Sleeper username, or add an ESPN league below.");
       return;
     }
-    if(!season || !week){ showError("Enter a season and a week."); return; }
+    if(!week){ showError("Enter a week."); return; }
 
     clearError();
-    el("prio").hidden = true;
-    el("prioToggle").classList.remove("on");
     el("leagueFilter").hidden = true;
     el("leagueToggle").classList.remove("open");
     el("posFilter").hidden = true;
@@ -1426,7 +1432,7 @@ function wire(){
         clearStatus();
         if(!m.rows.length){
           stopAuto();
-          showError("No starters found for week " + week + " in any of your leagues.");
+          showError("No starters found for week " + week + ".");
         } else {
           renderAll(m);
           startAuto();
@@ -1454,17 +1460,19 @@ function init(){
     if(last) el("username").value = last;
   }catch(e){}
 
+  // Before March the NFL season is still the previous calendar year. This is
+  // only a fallback: /state/nfl is authoritative and overwrites it below.
   var now = new Date();
-  el("season").value = now.getMonth() >= 2 ? now.getFullYear() : now.getFullYear() - 1;
+  state.season = now.getMonth() >= 2 ? now.getFullYear() : now.getFullYear() - 1;
   el("week").value = 1;
 
   getJSON(API + "/state/nfl").then(function(s){
     if(!s) return;
-    if(s.league_season || s.season) el("season").value = s.league_season || s.season;
+    if(s.league_season || s.season) state.season = parseInt(s.league_season || s.season, 10);
     var w = s.display_week || s.week || s.leg || 1;
     el("week").value = Math.max(1, Math.min(22, w));
     if(s.season_type) state.seasonType = s.season_type;
-  }).catch(function(){ /* keep calendar-based defaults */ });
+  }).catch(function(){ /* keep the calendar-based fallback */ });
 }
 
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

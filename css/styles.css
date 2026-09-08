@@ -13,6 +13,18 @@ body{margin:0;background:var(--bg);color:var(--txt);
 header h1{margin:0 0 4px;font-size:22px;letter-spacing:-.01em}
 header p{margin:0 0 20px;color:var(--muted)}
 
+/* Collapsible load bar. Animating grid rows from 1fr to 0fr gets a smooth
+   height transition without measuring the card, whose height changes with the
+   ESPN league list. The inner wrapper clips the card's own border and padding. */
+.setup{display:grid;grid-template-rows:1fr;
+  transition:grid-template-rows .3s ease,opacity .3s ease}
+/* visibility flips only after the collapse finishes, which keeps the clipped
+   form out of the tab order without killing the animation. */
+.setup-inner{overflow:hidden;min-height:0;visibility:visible;transition:visibility 0s}
+.setup.collapsed{grid-template-rows:0fr;opacity:0}
+.setup.collapsed .setup-inner{visibility:hidden;transition:visibility 0s .3s}
+@media (prefers-reduced-motion:reduce){ .setup{transition:none} }
+
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
 form{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
 .field{display:flex;flex-direction:column;gap:5px}
@@ -29,7 +41,6 @@ button.primary:disabled{opacity:.5;cursor:default}
 button.ghost{background:transparent}
 button.ghost:hover{border-color:var(--accent)}
 button.ghost.on{border-color:var(--accent);color:var(--accent)}
-.hint{color:var(--muted);font-size:12px;margin-top:10px}
 
 .espn{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
 .espn summary{cursor:pointer;font-size:12px;text-transform:uppercase;letter-spacing:.06em;
@@ -70,14 +81,15 @@ button.ghost.on{border-color:var(--accent);color:var(--accent)}
 .notes.on{display:block}
 .notes ul{margin:6px 0 0;padding-left:18px}
 
-#results{display:none;margin-top:22px}
+#results{display:none;margin-top:22px;transition:margin-top .3s ease}
 #results.on{display:block}
+.setup.collapsed + #results{margin-top:0}
 /* Everything in the bar sits on one baseline directly above the tables; the
    "updated" line lives in the headroom the taller right-hand stack creates. */
 .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--line);background:var(--panel);border-radius:99px;
-  padding:5px 12px;font-size:12px;cursor:pointer;user-select:none}
+  padding:5px 12px;font-size:12px;cursor:pointer;user-select:none;white-space:nowrap}
 .chip:hover{border-color:var(--accent)}
 .chip.on{background:var(--accent);border-color:var(--accent);color:#06101f;font-weight:600}
 .spacer{flex:1}
@@ -95,7 +107,6 @@ button.ghost.on{border-color:var(--accent);color:var(--accent)}
 .prio-list .grip{color:var(--muted);letter-spacing:-2px;font-size:13px}
 .prio-list .rank{color:var(--muted);font-size:11px;min-width:14px}
 .prio-list .lname{flex:1;font-weight:600;font-size:13px}
-.prio-list li:first-child .lname{color:var(--accent)}
 .prio-list .moves{display:flex;gap:4px}
 .prio-list .mv{padding:1px 7px;font-size:12px;line-height:1.4;border-radius:6px}
 .prio-list .mv:disabled{opacity:.3;cursor:default}
@@ -112,6 +123,18 @@ button.ghost.on{border-color:var(--accent);color:var(--accent)}
   font-size:13px}
 .lf-list input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;padding:0}
 .lf-list .lname{font-weight:600}
+
+/* The league list is both the filter and the scoring order, so each row carries a
+   checkbox and a drag handle. */
+.lf-list.prio-list li{display:flex;align-items:center;gap:9px;padding:7px 10px;cursor:grab}
+.lf-list.prio-list label{flex:1;padding:0;gap:0}
+.lf-list.prio-list li.off{opacity:.5}
+.lf-list.prio-list li.off .lname{font-weight:500}
+.lname.lead{color:var(--accent)}
+.scoring{font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
+  margin-left:7px;padding:1px 4px;border-radius:4px;color:var(--accent);
+  border:1px solid rgba(79,156,249,.5);background:rgba(79,156,249,.12)}
+
 
 .panes{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
 .pane{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}

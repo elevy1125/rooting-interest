@@ -1,127 +1,119 @@
 # Rooting Interest
 
-See every player starting in your fantasy football matchups this week — across all of your leagues
-at once, on both [Sleeper](https://sleeper.com) and ESPN — split into who's starting **for** you and
-who's starting **against** you.
+Every player starting in your fantasy football matchups this week, across all your leagues at once,
+on both [Sleeper](https://sleeper.com) and ESPN, split into who's starting **for** you and who's
+starting **against** you.
 
 **Live:** https://elevy1125.github.io/rooting-interest/
 
-Type in a Sleeper username and/or add ESPN leagues by ID. The app finds every league you're in for
-the season, pulls the current week's matchup in each one, and tallies each starter across all of
-them together:
+## Using it
 
-- **For me** — the player is in your starting lineup in *n* leagues
-- **Against me** — the player is in an opponent's starting lineup in *n* leagues
-- **Both sides** — a yellow tag on players who show up in both tables, because you're rooting for and
-  against them at the same time
+Enter a Sleeper username, set the week, and hit **Load matchups**. The season is always the current
+one, and the week defaults to it.
 
-Click any row to expand the details: which league, which team is starting them, and the manager. On the
-"For me" side it also shows who that team is facing.
+ESPN has no username lookup, so add those leagues by the numeric ID in the league URL
+(`…leagueId=1234567890`) and pick your team once. Both are remembered. Public leagues only.
 
-Leagues that didn't post a matchup this week are ignored entirely. They don't appear in the
-league filter and nothing is counted from them.
+You can run ESPN-only by leaving the username blank.
 
-## Live scoring
+## The tables
 
-Each table has a **Pts** column showing what the player has actually scored this week. Sleeper's
-matchup payload carries `players_points` — points already computed under that league's own scoring
-rules — so no scoring math happens here and no extra requests are made.
+- **For me**: the player is in your starting lineup in *n* leagues.
+- **Against me**: the player is in an opponent's starting lineup in *n* leagues.
+- **Both sides**: a yellow tag on players in both tables, because you're rooting for and against them
+  at once.
 
-Leagues with different scoring settings can give the same player different point totals. The
-**Scoring priority** panel lets you drag your leagues into an order; the Pts column uses the
-highest-priority league that player appears in. Inside the expanded details every league's own points
-are listed, with the priority league highlighted. The order is saved in `localStorage`.
+**Starts** counts one per league. Click a row for the per-league breakdown: league, team, manager,
+and that league's points. The "For me" side also shows who the team is facing.
+
+Leagues with no matchup this week are ignored entirely and don't appear in the **Leagues** list.
+
+## Points
+
+The **Pts** column shows what the player scored this week. Sleeper's matchup payload carries
+`players_points`, already computed under that league's scoring rules, so no scoring math happens here
+and no extra requests are made.
+
+Leagues score the same player differently, so Pts shows one league's number. The **Leagues** dropdown
+controls which: the checkbox includes a league in the tables, the order sets scoring priority. Pts
+uses the highest checked league the player appears in, tagged `scoring` in the panel. Uncheck the top
+league and the next one takes over. Drag or use the arrows to reorder; the order persists in
+`localStorage`.
+
+Commissioner adjustments (`custom_points`) apply to team totals rather than per-player values, so
+they aren't reflected. Stat corrections can restate points days later.
 
 ### Projections
 
-Before a player's game kicks off there are no real points yet, so the Pts column shows a projection
-instead, tagged `proj` and dimmed. The column has three states:
+Before kickoff there are no real points, so Pts shows a projection instead.
 
-| State | Shown | Source |
+| Game state | Pts shows | Tag |
 | --- | --- | --- |
-| Game hasn't started | projection, tagged `proj` | league-scored projection |
-| Game in progress | points so far, tagged `live` | live points |
-| Game final | final points, untagged | final points |
+| Not started | projection | `proj` |
+| In progress | points so far | `live` |
+| Final | final points | none |
 
 A player whose team is on bye is tagged `bye`.
 
-### Status column
+Sleeper projections arrive as **raw stats**, so they're multiplied through each league's own
+`scoring_settings`, the same dot product Sleeper does server-side. That keeps projections and actuals
+in the same units, so a league with 6-point passing TDs projects differently from one with 4. ESPN
+returns projections already scored under league rules, so those are used as-is.
 
-The **Status** column shows where that player's NFL game is:
+The two platforms use different forecasters (Sleeper's from Rotowire, ESPN's their own), so a player
+you hold on both projects differently depending on which league sits highest.
 
-| State | Shown |
+## Status column
+
+Where that player's NFL game is, with his own team's score first:
+
+| Game state | Shows |
 | --- | --- |
-| Yet to play | day and kickoff time in your own zone, e.g. `SUN 8:20 PM` |
-| Playing | live score and quarter, e.g. `17-14 Q3` (`OT` past the fourth) |
-| Finished | final score with an `F`, e.g. `24-20` |
+| Not started | day and kickoff in your zone, `SUN 8:20 PM` |
+| In progress | score and quarter, `17-14 Q3` (`OT` past the fourth) |
+| Final | final score, `24-20 F` |
 | Bye | `BYE` |
 
-The player's own team is always the left-hand number. All of it comes from the same ESPN scoreboard
-call the app already makes for game states, so live scores cost no extra requests and update with
-**Refresh scores**.
+Sorting goes by game progress first: in progress, then upcoming, then final. Within each, upcoming
+games run soonest-first and finished ones most-recent-first, keeping players in the same game
+together. Byes pin to the bottom in both directions.
 
-Sorting the column goes by game progress first: playing, then yet to play, then finished. Within
-each of those, games still ahead of you run forward in time (soonest kickoff first) while finished
-ones run backward, so the game that just ended sits on top. Players in the same game always stay
-together. Byes sort to the bottom in both directions, since they have no game to order by. The
-**Game status** dropdown filters to any combination of these states.
+Grouping by position outranks any column sort, so turn it off to get live games at the very top.
 
-Note that grouping by position takes precedence over any column sort, so leave it off if you want
-live games at the very top of the table.
+## Filters
 
-For Sleeper leagues, projections come from `api.sleeper.com/projections/nfl/<season>/<week>` as **raw
-stats**, not points, so they're multiplied through each league's own `scoring_settings` — the same dot
-product Sleeper does server-side. That keeps projections and actuals in the same units, so a league
-with 6-point passing TDs projects differently from one with 4. ESPN returns projections already scored
-under league rules, so those are used as-is.
+**Positions**, **Leagues** and **Status** are multi-selects with select all / none, each labelled
+with what's currently on. Positions lists the codes outright (`RB, WR, TE`) since they're short. **Both sides only** carries its own count. **Group by position**
+(QB, RB, WR, TE, K, DEF, then the rest) sits inside the Positions panel.
 
-Because the two platforms use different forecasters (Sleeper's come from Rotowire, ESPN's are their
-own), a player you hold on both will project differently depending on which league sits highest in
-your scoring priority.
+The search box matches players, NFL teams and league names. Every column sorts, independently per
+table.
 
-Game states come from ESPN's public scoreboard (`site.api.espn.com`), since Sleeper has no
-game-status endpoint. The same response carries kickoff time, quarter and score, which is what the
-Status column renders. If either request fails the app falls back to actual points only, and the
-Status column goes blank rather than guessing.
+**Hide setup** folds the username and league bar away once the tables are up, for a cleaner view on
+a second screen. It starts open every visit, and reappears on its own if a refresh errors, since the
+error surfaces there.
 
-**Refresh scores** re-pulls matchups, game states and projections while leaving the player database,
-league list and rosters cached, and the page auto-refreshes every two minutes while the tab is
-visible (paused when it isn't). The last update time sits beside the button.
+## Refreshing
 
-Commissioner adjustments (`custom_points`) apply to team totals, not per-player values, so they
-aren't reflected here. Stat corrections can restate points days later.
-
-## Features
-
-- Side-by-side **For me / Against me** tables
-- **Group by position** (QB → RB → WR → TE → K → DEF, then everything else), toggled from inside
-  the Positions dropdown
-- Every column sortable, independently per table; counts are **starts** (one per league a player starts in)
-- **Positions**, **Leagues** and **Game status** dropdowns, each a multi-select with select all /
-  select none; the button shows what's currently filtered for
-- "Both sides only" view, with the count of those players on the button
-- Search across players/NFL teams/league names
-- Auto-detects the current NFL season and week; both are editable
-- Sleeper and ESPN leagues merge into one view, each league tagged by platform
-- Handles co-owned rosters and empty starter slots
+Scores auto-refresh every two minutes while the tab is visible, and immediately on **Refresh
+scores**. That re-pulls matchups, game states and projections only, leaving the player database,
+league list and rosters cached. Last update sits above the button.
 
 ## Running it
 
-It's a static site with no build step and no dependencies.
+Static site, no build step, no dependencies.
 
 ```bash
-# just open it
 open index.html
 
-# or serve it (avoids browser CORS restrictions on file:// URLs)
+# or serve it, which avoids browser CORS restrictions on file:// URLs
 python3 -m http.server 8000
-# then visit http://localhost:8000
 ```
 
 ## How it works
 
-Everything runs in the browser against read-only endpoints — there's no backend, no API key, and no
-account data leaves your machine.
+Everything runs in the browser against read-only endpoints. No backend, no API key, and no account
+data leaves your machine.
 
 **Sleeper** (`api.sleeper.app/v1`)
 
@@ -133,9 +125,9 @@ account data leaves your machine.
 | Rosters, managers, matchups | `GET /league/<league_id>/{rosters,users,matchups/<week>}` |
 | Player id → name/position/team | `GET /players/nfl` |
 
-Your roster is matched by `owner_id`, falling back to `co_owners`. Your opponent is the other roster
-sharing your `matchup_id`. Requests run five leagues at a time to stay well under Sleeper's
-1000-calls-per-minute guidance.
+Your roster matches on `owner_id`, falling back to `co_owners`; your opponent is the other roster
+sharing your `matchup_id`. Requests run five leagues at a time, well under Sleeper's
+1000-per-minute guidance.
 
 **ESPN** (`lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/<season>/segments/0/leagues/<id>`)
 
@@ -144,20 +136,23 @@ sharing your `matchup_id`. Requests run five leagues at a time to stay well unde
 | League name, teams, managers | `?view=mTeam&view=mSettings` |
 | Matchups, lineups, points, projections | `?view=mBoxscore&scoringPeriodId=<week>` |
 
-Your matchup is the one for the week containing your team id. Starters are entries whose
-`lineupSlotId` isn't bench (20) or IR (21). Points come from `appliedStatTotal`, projections from the
-`statSourceId: 1` stat row — both already scored under league rules.
+Starters are entries whose `lineupSlotId` isn't bench (20) or IR (21). Points come from
+`appliedStatTotal`, projections from the `statSourceId: 1` row, both already scored under league
+rules.
 
-ESPN players are matched to Sleeper's via the `espn_id` field in the player database, so the same
-player from both platforms lands on one row. Team defenses go through the team code instead, since
-ESPN uses negative ids and a different name ("Chiefs D/ST" vs "Kansas City Chiefs"). Anything that
-can't be matched still shows, using ESPN's own name.
+ESPN players match to Sleeper's via `espn_id`, so one player from both platforms lands on one row.
+Team defenses go through the team code instead, since ESPN uses negative ids and a different name
+("Chiefs D/ST" vs "Kansas City Chiefs"). Unmatched players still show, under ESPN's name.
 
-ESPN's `/nfl/teams` endpoint isn't CORS-accessible from a third-party origin, so the numeric
-`proTeamId` → abbreviation map is baked in and topped up each week from the scoreboard.
+Game states, kickoff times, quarters and scores all come from ESPN's public scoreboard
+(`site.api.espn.com`), since Sleeper has no game-status endpoint. If it fails, Pts falls back to
+actual points and Status goes blank.
 
-The player database is ~5 MB, so it's trimmed to name/position/team/injury and cached in `localStorage`
-for 24 hours. "Refresh players" clears it. If storage is unavailable the app just re-fetches per session.
+ESPN's `/nfl/teams` endpoint isn't CORS-accessible cross-origin, so the `proTeamId` to abbreviation
+map is baked in and topped up each week from the scoreboard.
+
+The player database is ~5 MB, so it's trimmed to name/position/team/injury and cached in
+`localStorage` for 24 hours. **Refresh players** clears it. Without storage, it refetches per session.
 
 ## Structure
 
@@ -171,24 +166,16 @@ favicon.svg           football icon (favicon.png / apple-touch-icon.png are rast
 ## ESPN limitations
 
 - **Public leagues only.** Private leagues return 401 and can't be read from a browser at all: the
-  `Cookie` header is forbidden to scripts and ESPN's session cookies are `SameSite=Lax`. The app says
-  so plainly rather than failing vaguely.
-- **No account lookup.** ESPN has no username → leagues path, so each league is added by numeric ID
-  and you pick your team from a dropdown once. Both are remembered.
-- **Unofficial API.** ESPN publishes no documentation, terms, or versioning for these endpoints, and
-  has changed them without notice before (the base host moved in April 2024). This is the part most
-  likely to break on its own.
-- Multi-week playoff matchups, where `matchupPeriodId` and `scoringPeriodId` diverge, aren't handled
-  specially yet.
+  `Cookie` header is forbidden to scripts and ESPN's session cookies are `SameSite=Lax`.
+- **No account lookup.** Hence adding each league by ID.
+- **Unofficial API.** No documentation, terms, or versioning, and it has changed without notice
+  before (the base host moved in April 2024). Most likely thing to break.
+- **Playoff matchups** spanning multiple weeks, where `matchupPeriodId` and `scoringPeriodId`
+  diverge, aren't handled specially yet.
 
 ## To do
 
-- **Fullscreen mode** — a distraction-free view of the two tables for leaving up on a second screen
-  during games.
-- **Game datetimes** — show each player's kickoff time, so it's clear what's already played, what's
-  on now, and what's still to come.
-- **Game statuses** — a per-player state of *yet to play*, *playing*, or *game finished*, surfaced on
-  the row rather than inferred from the `proj` / `live` / untagged Pts tag.
+Nothing queued.
 
 ## Notes
 
