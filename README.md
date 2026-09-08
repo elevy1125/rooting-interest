@@ -142,7 +142,13 @@ rules.
 
 ESPN players match to Sleeper's via `espn_id`, so one player from both platforms lands on one row.
 Team defenses go through the team code instead, since ESPN uses negative ids and a different name
-("Chiefs D/ST" vs "Kansas City Chiefs"). Unmatched players still show, under ESPN's name.
+("Chiefs D/ST" vs "Kansas City Chiefs").
+
+Sleeper leaves `espn_id` empty for a lot of players, so the fallback is name plus position. Sleeper
+drops generational suffixes and ESPN keeps them ("Kenneth Walker" against "Kenneth Walker III"), so
+both sides are also matched with the suffix removed. Where that makes two players ambiguous, as with
+a father and son who both played, the one currently on a roster wins; if both are, no match is made
+rather than guessing. Unmatched players still show, under ESPN's name.
 
 Game states, kickoff times, quarters and scores all come from ESPN's public scoreboard
 (`site.api.espn.com`), since Sleeper has no game-status endpoint. If it fails, Pts falls back to

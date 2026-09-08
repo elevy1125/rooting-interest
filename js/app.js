@@ -33,6 +33,7 @@ var state = {
   leagueNames: {},
   byEspn: {},             // espn player id -> sleeper player id
   byName: {},             // "name|pos" -> sleeper player id
+  byBase: {},             // same, with the generational suffix dropped
   espnPlayers: {},        // fallback info for players with no Sleeper match
   proTeams: null,         // espn pro team id -> abbreviation
   espnConfig: [],         // [{id, teamId, name, teams:[]}]
@@ -144,18 +145,45 @@ function indexPlayers(slim){
   state.players = slim;
   state.byEspn = {};
   state.byName = {};
-  var id, p;
+  state.byBase = {};
+  var id, p, base, cur;
   for(id in slim){
     p = slim[id];
     if(p[4]) state.byEspn[String(p[4])] = id;
     state.byName[nameKey(p[0], p[1])] = id;
+
+    // Two players can share a base name once the suffix is gone (Marvin
+    // Harrison and Marvin Harrison Jr.). Prefer the one on a roster, and if
+    // both are, refuse to guess rather than put the wrong player on the row.
+    base = baseNameKey(p[0], p[1]);
+    cur = state.byBase[base];
+    if(cur === undefined) state.byBase[base] = id;
+    else if(cur !== null && onTeam(p)) state.byBase[base] = onTeam(slim[cur]) ? null : id;
   }
   return slim;
 }
 
+function onTeam(p){ return !!(p && p[2]); }
+
 function nameKey(name, pos){
   return String(name || "").toLowerCase().replace(/[^a-z]/g, "") + "|" + (pos || "");
 }
+
+// Sleeper and ESPN disagree about generational suffixes ("Kenneth Walker III"
+// against "Kenneth Walker"), and either side can be the one carrying it, so
+// both go through this before falling back to a name match. Suffixes stack
+// ("Jr. II"), and one is only dropped while a first and last name remain.
+var SUFFIX = /[\s,]+(?:jr|sr|ii|iii|iv|v)\.?$/i;
+
+function baseName(name){
+  var s = String(name || "").trim(), m;
+  while((m = s.match(SUFFIX)) && s.slice(0, m.index).trim().split(/\s+/).length > 1){
+    s = s.slice(0, m.index).trim();
+  }
+  return s;
+}
+
+function baseNameKey(name, pos){ return nameKey(baseName(name), pos); }
 
 function loadPlayers(){
   if(state.players) return Promise.resolve(state.players);
@@ -283,6 +311,7 @@ function espnEntry(entry){
   var id = state.byEspn[espnId];
   if(!id && pos === "DEF" && team && state.players && state.players[team]) id = team;
   if(!id) id = state.byName[nameKey(pl.fullName, pos)];
+  if(!id) id = state.byBase[baseNameKey(pl.fullName, pos)];
   if(!id){
     id = "espn:" + espnId;
     state.espnPlayers[id] = {name: pl.fullName || ("ESPN " + espnId), pos:pos, team:team || "FA", inj:""};
