@@ -28,14 +28,30 @@ and that league's points. The "For me" side also shows who the team is facing.
 
 Leagues with no matchup this week are ignored entirely and don't appear in the **Leagues** list.
 
-## Roster view
+## Modes
 
-Hold **R** for half a second to trade both tables for one full-width list of every player you roster,
-bench included. Hold it again to go back. A tap does nothing, and nothing happens while you're typing
-in the search box or the username field.
+Three modes, one key each, held for half a second rather than tapped so a stray letter can't flip the
+page out from under you. Nothing fires while you're typing in the search box or the username field.
+Hold the same key again to leave, or hold **X** to reset the view from wherever you are. The keys are
+listed in the footer, which is the only place they live, so the footer stays on screen in every mode.
 
-"Against me" slides off, since none of it applies to your own bench. Two columns count instead of
-one:
+| Key | Mode | Instead of the two tables you get |
+| --- | --- | --- |
+| R | Roster view | one full-width list of everyone you roster, bench included |
+| G | Group by games | one card per NFL game, with your stake in it underneath |
+| T | TV mode | the same screen, larger, with the setup bar and filters out of the way |
+| X | Reset view | the two tables back |
+
+Roster view and Group by games are two layouts of the same week, so turning one on turns the other
+off. TV mode sits over whichever of them is up, so `G` then `T` gives you game cards at across-the-
+room size, and pressing `T` again leaves the cards where they were. Each key only ever touches its
+own mode; `X` is the one that clears everything. An error drops you out of TV mode, so the load bar
+carrying the message is on screen.
+
+### Roster view
+
+Every player you roster, bench included. "Against me" slides off, since none of it applies to your
+own bench. Two columns count instead of one:
 
 - **Starts**: lineups you actually have him in, the same number the normal table shows.
 - **Shares**: leagues you roster him in at all, starting or not.
@@ -49,6 +65,39 @@ priority, now counting the leagues he's benched in.
 
 **Both sides** has no meaning here, since there's only one table, so the tag and the filter chip both
 go away while you're in the view. The chip comes back set the way you left it.
+
+### Group by games
+
+One card per NFL game, ordered the way the Status column sorts: what's on now, then what's next
+soonest first, then what just finished, with byes at the bottom. Games you have nobody in don't get a
+card.
+
+The card header is the game itself, both teams with their logos, the score with the leader's side in
+white, and the quarter or the kickoff time. Underneath it, the players you have a stake in, split
+into "For me" and "Against me". A card with only one side fills the width. Rows still expand to the
+per-league breakdown.
+
+Position grouping doesn't apply here, since the game is doing the grouping, and the filter chips
+change with it. **Positions** and **Both sides only** go away, **Leagues** stays, and **Status** is
+replaced by **Game status**, which asks two things at once:
+
+- **Days**: the days this week's games actually fall on, Thursday before Sunday rather than in
+  alphabetical order.
+- **Game state**: any combination of yet to play, playing and finished.
+
+Both are multi-selects with select all and none, and the chip names what's left on (`Games: MON`,
+`Games: SUN, MON · Playing`). Game state is the same setting the Status chip holds in the other
+views, so a choice made in one shows up in the other. The chips that go away leave their filters
+inert while they're gone, the way Both sides does in Roster view, and hand them back on the way out.
+
+The search box and the sort you had still apply.
+
+### TV mode
+
+Bigger type, bigger logos, and the subheading, setup bar, search and filter chips all hidden. The
+footer stays, since it's where the keys are. Nothing is filtered
+out, so it won't go blank midweek, and the status sort already keeps live games near the top. Scores
+keep auto-refreshing every two minutes.
 
 ## Points
 
@@ -105,7 +154,7 @@ Grouping by position outranks any column sort, so turn it off to get live games 
 ## Filters
 
 **Positions**, **Leagues** and **Status** are multi-selects with select all / none, each labelled
-with what's currently on. Positions lists the codes outright (`RB, WR, TE`) since they're short. **Both sides only** carries its own count. **Group by position**
+with what's currently on. Group by games swaps this set out, see [Modes](#modes). Positions lists the codes outright (`RB, WR, TE`) since they're short. **Both sides only** carries its own count. **Group by position**
 (QB, RB, WR, TE, K, DEF, then the rest) sits inside the Positions panel.
 
 The search box matches players, NFL teams and league names. Every column sorts, independently per
@@ -174,8 +223,10 @@ both sides are also matched with the suffix removed. Where that makes two player
 a father and son who both played, the one currently on a roster wins; if both are, no match is made
 rather than guessing. Unmatched players still show, under ESPN's name.
 
-Game states, kickoff times, quarters and scores all come from ESPN's public scoreboard
-(`site.api.espn.com`), since Sleeper has no game-status endpoint. If it fails, Pts falls back to
+Game states, kickoff times, quarters, scores, home and away, and the team logos the game cards use
+all come from ESPN's public scoreboard (`site.api.espn.com`), since Sleeper has no game-status
+endpoint. Taking the logo from the scoreboard beats guessing at ESPN's image CDN, which names files
+by their own abbreviations rather than the ones used here. If it fails, Pts falls back to
 actual points and Status goes blank.
 
 ESPN's `/nfl/teams` endpoint isn't CORS-accessible cross-origin, so the `proTeamId` to abbreviation

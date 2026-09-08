@@ -94,6 +94,9 @@ button.ghost.on{border-color:var(--accent);color:var(--accent)}
 .chip.on{background:var(--accent);border-color:var(--accent);color:#06101f;font-weight:600}
 .spacer{flex:1}
 
+/* The key list is how you get in and out of a mode, so it stays on screen. */
+.keys{color:var(--muted);opacity:.75;white-space:nowrap}
+
 .prio{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
   padding:14px 16px;margin-bottom:14px}
 .prio-head b{display:block;font-size:13px;margin-bottom:2px}
@@ -112,6 +115,13 @@ button.ghost.on{border-color:var(--accent);color:var(--accent)}
 .prio-list .mv:disabled{opacity:.3;cursor:default}
 
 .chip.open,.chip.filtered{border-color:var(--accent);color:var(--accent)}
+/* Days and game states are two questions in one panel, side by side while
+   there's room for them. */
+.gf-cols{display:flex;gap:28px;flex-wrap:wrap}
+.gf-cols > div{min-width:170px}
+.gf-label{margin-top:14px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);font-weight:700}
+.gf-cols .lf-bulk{margin-top:8px}
 .lf-bulk{display:flex;gap:8px;margin-top:12px;max-width:520px}
 .lf-bulk button{padding:4px 10px;font-size:12px}
 /* grouping isn't a bulk selection, so it sits apart from the two that are */
@@ -225,12 +235,67 @@ table.sub th,table.sub td{border-bottom:1px solid #202836;font-size:13px;white-s
 table.sub thead th{position:static;background:transparent;cursor:default}
 table.sub tr:last-child td{border-bottom:none}
 
+.panes[hidden],.games[hidden]{display:none}
+
+/* One card per game: the game's own details up top, your stake in it below. */
+.games{display:grid;gap:14px}
+.gcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden}
+.gcard.in{border-color:rgba(79,156,249,.45)}
+.ghead{display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--panel2);
+  border-bottom:1px solid var(--line)}
+.tm{display:flex;align-items:center;gap:7px}
+.tlogo{width:26px;height:26px;object-fit:contain}
+.tabbr{font-weight:700;font-size:14px}
+.tscore{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.tm:not(.lead) .tscore{color:var(--muted)}
+.gat{color:var(--muted);font-size:12px}
+.gtitle{font-weight:700;font-size:13px;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.06em}
+.gnote{margin-left:auto;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted)}
+.gnote.live{color:var(--accent);font-weight:700}
+.gbody{display:flex;align-items:stretch}
+.gside{flex:1;min-width:0}
+.gside + .gside{border-left:1px solid var(--line)}
+.gside-head{display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:11px;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+  border-bottom:1px solid var(--line)}
+.gside-sub{margin-left:auto;opacity:.7}
+/* The name takes the slack so the numbers cluster on the right instead of
+   drifting apart across a wide card. */
+table.grid.card td{padding:7px 14px;width:1px;white-space:nowrap}
+table.grid.card td.name{width:100%}
+table.grid.card tr:last-child>td{border-bottom:none}
+table.grid.card td.details{width:auto;padding:0}
+
+/* TV mode: same everything, further away. */
+body.tv .setup,body.tv .toolbar,body.tv .prio,body.tv header p{display:none}
+body.tv header h1{margin-bottom:18px}
+body.tv footer{font-size:14px;margin-top:22px}
+body.tv .pane-head h2,body.tv .gside-head{font-size:18px;text-transform:none;letter-spacing:0}
+body.tv th{font-size:13px}
+body.tv td{font-size:17px;padding:12px 16px}
+body.tv .name{font-weight:700}
+body.tv .tw,body.tv .pane-sub,body.tv .gside-sub{font-size:14px}
+body.tv .tlogo{width:38px;height:38px}
+body.tv .tabbr{font-size:19px}
+body.tv .tscore{font-size:24px}
+body.tv .gnote{font-size:14px}
+body.tv td.pts .pv,body.tv .cnt{font-size:19px}
+body.tv td.gs{font-size:15px}
+
 .empty{padding:24px;text-align:center;color:var(--muted)}
-footer{margin-top:18px;color:var(--muted);font-size:12px}
+footer{margin-top:18px;color:var(--muted);font-size:12px;display:flex;flex-wrap:wrap;gap:6px 16px;
+  align-items:baseline}
 a{color:var(--accent)}
 
 @media (max-width:900px){
   .panes{grid-template-columns:1fr}
+  .gbody{display:block}
+  .gside + .gside{border-left:0;border-top:1px solid var(--line)}
+  .keys{white-space:normal}
+  footer{gap:4px}
   #search{width:100%}
   .field{flex:1 1 100%}
   #username{width:100%}

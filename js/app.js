@@ -24,9 +24,11 @@ var state = {
   sort: { "for": {key:"count", dir:-1}, "against": {key:"count", dir:-1} },
   group: true,
   bothOnly: false,
-  rosterView: false,      // hold R: your whole roster, bench included, full width
+  view: "base",           // base | roster | game, one at a time
+  tv: false,              // TV mode: bigger type, less chrome, over any view
   posOff: {},             // positions left out of the tables (default: none)
   statusOff: {},          // game states left out of the tables (default: none)
+  dayOff: {},             // game days left out of the cards (default: none)
   search: "",
   open: {},               // "side:playerId" -> bool
   leagueOrder: [],        // league ids, highest scoring priority first
@@ -73,6 +75,8 @@ function setSetupCollapsed(on){
 function showError(msg){
   errBox.textContent = msg;
   errBox.classList.add("on");
+  // TV mode hides the load bar the error lives in, so an error drops out of it.
+  if(state.tv){ state.tv = false; renderModes(); }
   setSetupCollapsed(false);
 }
 function clearError(){ errBox.classList.remove("on"); errBox.textContent = ""; }
@@ -394,7 +398,11 @@ function fetchGameStates(season, week, seasonType){
           period: status.period || 0,
           score: toScore(c.score),
           oppScore: other ? toScore(other.score) : null,
-          opp: other && other.team ? normTeam(other.team.abbreviation) : ""
+          opp: other && other.team ? normTeam(other.team.abbreviation) : "",
+          home: c.homeAway === "home",
+          // The scoreboard carries the logo, which spares the cards a guess at
+          // ESPN's CDN naming (their abbreviations aren't the ones used here).
+          logo: c.team.logo || (c.team.logos && c.team.logos[0] && c.team.logos[0].href) || ""
         };
         noteProTeam(c.team.id, c.team.abbreviation);   // keep the id map honest
       });
@@ -787,7 +795,7 @@ function included(leagueId){ return !state.excluded[leagueId]; }
 // so this is the one place the two views diverge: everything downstream
 // (counts, points, details, search) follows whatever it returns.
 function sideEntries(row, side){
-  var withBench = state.rosterView && side === "for";
+  var withBench = rosterOn() && side === "for";
   return row.entries.filter(function(e){
     return e.side === side && included(e.leagueId) && (withBench || !e.bench);
   });
@@ -883,44 +891,14 @@ function posList(){
   });
 }
 
-/* Positions and Status are the same widget over different values: a list of
-   checkboxes, select all/none, and a chip naming what's on. `key` is the state
-   object holding the values that are switched OFF. `chipText` overrides the
-   default label. Returns its own render function. */
-function multiFilter(cfg){
-  var chip = el(cfg.toggle), panel = el(cfg.panel), list = el(cfg.list);
-
+/* The list half of a filter: checkboxes over `items`, select all and none, and
+   the `key` state object holding the values that are switched OFF. Returns a
+   render function that repaints the list and reports what's left on. */
+function multiList(cfg, apply){
+  var list = el(cfg.list);
   function off(){ return state[cfg.key]; }
   function label(v){ return cfg.label ? cfg.label(v) : v; }
 
-  // Name what's on while the names still fit, then fall back to a count.
-  function defaultText(on, items){
-    return on.length === items.length ? cfg.title
-      : !on.length ? cfg.title + ": none"
-      : on.length <= cfg.maxNames ? cfg.title + ": " + on.map(label).join(", ")
-      : cfg.title + ": " + on.length + " of " + items.length;
-  }
-
-  function render(){
-    var items = cfg.items();
-    list.innerHTML = items.map(function(v, i){
-      var id = cfg.list + i;
-      return '<li><label for="' + id + '"><input type="checkbox" id="' + id +
-        '" data-v="' + esc(v) + '"' + (off()[v] ? "" : " checked") + ">" +
-        '<span class="lname">' + esc(label(v)) + "</span></label></li>";
-    }).join("");
-
-    var on = items.filter(function(v){ return !off()[v]; });
-    chip.textContent = (cfg.chipText || defaultText)(on, items);
-    chip.classList.toggle("filtered", on.length !== items.length);
-  }
-
-  function apply(){ render(); renderTables(); }
-
-  chip.addEventListener("click", function(){
-    panel.hidden = !panel.hidden;
-    this.classList.toggle("open", !panel.hidden);
-  });
   list.addEventListener("change", function(e){
     var cb = e.target.closest("input[type=checkbox]");
     if(!cb) return;
@@ -935,10 +913,47 @@ function multiFilter(cfg){
     apply();
   });
 
-  return render;
+  return function(){
+    var items = cfg.items();
+    list.innerHTML = items.map(function(v, i){
+      var id = cfg.list + i;
+      return '<li><label for="' + id + '"><input type="checkbox" id="' + id +
+        '" data-v="' + esc(v) + '"' + (off()[v] ? "" : " checked") + ">" +
+        '<span class="lname">' + esc(label(v)) + "</span></label></li>";
+    }).join("");
+    return {items:items, on:items.filter(function(v){ return !off()[v]; })};
+  };
 }
 
-var renderPosFilter, renderStatusFilter;
+/* Positions and Status are the same widget over different values: one chip over
+   one list. `chipText` overrides the default label. */
+function multiFilter(cfg){
+  var chip = el(cfg.toggle), panel = el(cfg.panel);
+  var paint = multiList(cfg, function(){ renderBody(); });
+
+  // Name what's on while the names still fit, then fall back to a count.
+  function defaultText(on, items){
+    return on.length === items.length ? cfg.title
+      : !on.length ? cfg.title + ": none"
+      : on.length <= cfg.maxNames ? cfg.title + ": " + on.map(function(v){
+          return cfg.label ? cfg.label(v) : v;
+        }).join(", ")
+      : cfg.title + ": " + on.length + " of " + items.length;
+  }
+
+  chip.addEventListener("click", function(){
+    panel.hidden = !panel.hidden;
+    this.classList.toggle("open", !panel.hidden);
+  });
+
+  return function(){
+    var r = paint();
+    chip.textContent = (cfg.chipText || defaultText)(r.on, r.items);
+    chip.classList.toggle("filtered", r.on.length !== r.items.length);
+  };
+}
+
+var renderPosFilter, renderStatusFilter, renderGameFilter;
 
 // "none" is deliberately absent: with no scoreboard there's nothing to filter on,
 // so those rows stay visible whatever the boxes say.
@@ -950,6 +965,59 @@ function statusList(){
   var seen = {};
   state.rows.forEach(function(r){ seen[gameMode(r)] = true; });
   return STATUS_ORDER.filter(function(s){ return seen[s]; });
+}
+
+function dayOf(row){
+  var g = gameOf(row);
+  return g && g.kickoff ? DAY_ABBR[new Date(g.kickoff).getDay()] : "";
+}
+
+// The days this week's games actually fall on, earliest first rather than
+// alphabetical, so Thursday reads before Sunday.
+function dayList(){
+  var first = {}, days = [];
+  state.rows.forEach(function(r){
+    var d = dayOf(r), g = gameOf(r);
+    if(!d) return;
+    if(first[d] === undefined){ first[d] = g.kickoff; days.push(d); }
+    else if(g.kickoff < first[d]) first[d] = g.kickoff;
+  });
+  return days.sort(function(a, b){ return first[a] - first[b]; });
+}
+
+/* Group by games asks a different question than the tables do, so it gets a
+   different filter: one chip over two lists, the days you want and the states
+   you want. The states share `statusOff` with the Status chip, since it's the
+   same dimension seen from the other view. */
+function gameFilter(){
+  var chip = el("gameToggle"), panel = el("gameFilter");
+  var apply = function(){ renderBody(); };
+  var days = multiList({list:"gdList", all:"gdAll", none:"gdNone", key:"dayOff",
+    items:dayList}, apply);
+  var states = multiList({list:"gxList", all:"gxAll", none:"gxNone", key:"statusOff",
+    items:statusList, label:function(v){ return STATUS_LABEL[v]; }}, apply);
+
+  function part(r, noneWord, label){
+    if(r.on.length === r.items.length) return "";
+    if(!r.on.length) return "no " + noneWord;
+    if(r.on.length <= 2) return r.on.map(label).join(", ");
+    return r.on.length + " of " + r.items.length + " " + noneWord;
+  }
+
+  chip.addEventListener("click", function(){
+    panel.hidden = !panel.hidden;
+    this.classList.toggle("open", !panel.hidden);
+  });
+
+  return function(){
+    var d = days(), x = states();
+    var bits = [
+      part(d, "days", function(v){ return v; }),
+      part(x, "states", function(v){ return STATUS_LABEL[v]; })
+    ].filter(Boolean);
+    chip.textContent = bits.length ? "Games: " + bits.join(" · ") : "Game status";
+    chip.classList.toggle("filtered", bits.length > 0);
+  };
 }
 
 
@@ -966,9 +1034,12 @@ function visibleRows(side){
   var s = state.sort[side];
   return state.rows.filter(function(r){
     if(sharesOf(r, side) === 0) return false;
-    if(state.bothOnly && !state.rosterView && !isBoth(r)) return false;
-    if(state.posOff[r.pos]) return false;
+    // Positions and Both sides have no chip in Group by games, so they go inert
+    // there rather than filtering from behind a hidden control.
+    if(state.bothOnly && state.view === "base" && !isBoth(r)) return false;
+    if(!gameOn() && state.posOff[r.pos]) return false;
     if(state.statusOff[gameMode(r)]) return false;
+    if(gameOn() && state.dayOff[dayOf(r)]) return false;
     if(q){
       var hay = (r.name + " " + r.pos + " " + r.team + " " + sideEntries(r, side)
         .map(function(e){ return e.league + " " + e.startedBy + " " + e.versus; })
@@ -1008,7 +1079,7 @@ function detailHTML(row, side, cols){
   // The "for" table shows who you're up against; the "against" table doesn't need
   // a column repeating your own team name on every row.
   var showFacing = side === "for";
-  var showLineup = state.rosterView && side === "for";
+  var showLineup = rosterOn() && side === "for";
   var top = topIncluded();
   var mode = gameMode(row);
   var body = sideEntries(row, side)
@@ -1042,7 +1113,7 @@ function rowHTML(r, side, cols){
   var html = '<tr class="row' + (open ? " open" : "") + '" data-id="' + esc(r.id) + '">' +
     '<td class="name"><span class="caret">&#9656;</span> ' + esc(r.name) +
       (r.inj ? '<span class="inj">' + esc(r.inj) + "</span>" : "") +
-      (isBoth(r) && !state.rosterView ? '<span class="both">both sides</span>' : "") + "</td>";
+      (isBoth(r) && !rosterOn() ? '<span class="both">both sides</span>' : "") + "</td>";
   if(!state.group) html += '<td class="poscol"><span class="pos">' + esc(r.pos) + "</span></td>";
   html += '<td><span class="tw">' + esc(r.team) + "</span></td>";
 
@@ -1066,7 +1137,7 @@ function rowHTML(r, side, cols){
 
   var starts = countOf(r, side);
   html += '<td class="num"><span class="cnt' + (starts ? "" : " none") + '">' + starts + "</span></td>";
-  if(state.rosterView && side === "for"){
+  if(rosterOn() && side === "for"){
     html += '<td class="num sharecol"><span class="shr">' + sharesOf(r, side) + "</span></td>";
   }
   html += "</tr>";
@@ -1077,14 +1148,14 @@ function rowHTML(r, side, cols){
 // Shares only differ from starts once the bench is in the list, so the tallies
 // only carry them there.
 function sharesNote(rows, side){
-  if(!(state.rosterView && side === "for")) return "";
+  if(!(rosterOn() && side === "for")) return "";
   var n = rows.reduce(function(t, r){ return t + sharesOf(r, side); }, 0);
   return " · " + n + " share" + (n === 1 ? "" : "s");
 }
 
 function renderSide(side){
   var rows = visibleRows(side);
-  var cols = (state.group ? 5 : 6) + (state.rosterView && side === "for" ? 1 : 0);
+  var cols = (state.group ? 5 : 6) + (rosterOn() && side === "for" ? 1 : 0);
   var tbody = el(side === "for" ? "tbodyFor" : "tbodyAgainst");
   var table = document.querySelector('table.grid[data-side="' + side + '"]');
   var html = [];
@@ -1130,14 +1201,146 @@ function renderSide(side){
 
 function renderTables(){ renderSide("for"); renderSide("against"); }
 
-/* ---------------- roster view ---------------- */
+/* ---------------- game cards ---------------- */
 
-/* Hold R to trade the two tables for one full-width list of everyone you
-   roster, bench included. Held rather than tapped so a stray R while you're
-   reading can't flip the page out from under you, and guarded against firing
-   while you're typing in the search box or the username field. */
-var RV_HOLD = 500;
-var rvTimer = null;
+/* Group by games throws out the two-table layout entirely: one card per NFL
+   game, the game's own details at the top of it, and the players you have a
+   stake in underneath. Games you have nobody in never get a card. */
+
+// Both sides of a game key it the same way, away first, so the two halves of a
+// matchup land in one bucket.
+function gameKeyOf(row){
+  var mode = gameMode(row);
+  if(mode === "bye" || mode === "none") return mode;
+  var g = gameOf(row), t = normTeam(row.team);
+  if(!g || !g.opp) return "none";
+  return g.home ? g.opp + "|" + t : t + "|" + g.opp;
+}
+
+function logoOf(team){
+  var g = state.gameState[team];
+  return g && g.logo ? g.logo : "";
+}
+
+function teamChip(team, score, lead){
+  var logo = logoOf(team);
+  return '<span class="tm' + (lead ? " lead" : "") + '">' +
+    (logo ? '<img class="tlogo" src="' + esc(logo) + '" alt="" loading="lazy">' : "") +
+    '<span class="tabbr">' + esc(team) + "</span>" +
+    (score === null || score === undefined ? "" : '<span class="tscore">' + score + "</span>") +
+    "</span>";
+}
+
+// The card header says what's happening in the game itself: who's playing,
+// where the score is, and how much football is left.
+function gameHeadHTML(key, mode){
+  if(key === "bye") return '<div class="ghead bye"><span class="gtitle">On bye</span></div>';
+  if(key === "none") return '<div class="ghead"><span class="gtitle">No game</span></div>';
+  var parts = key.split("|"), away = parts[0], home = parts[1];
+  var g = state.gameState[home] || state.gameState[away] || {};
+  var homeScore = null, awayScore = null;
+  if(state.gameState[home]){
+    homeScore = state.gameState[home].score;
+    awayScore = state.gameState[home].oppScore;
+  } else if(state.gameState[away]){
+    awayScore = state.gameState[away].score;
+    homeScore = state.gameState[away].oppScore;
+  }
+  var live = mode === "in";
+  var note = mode === "pre" ? (g.kickoff ? fmtKick(g.kickoff) : "")
+           : mode === "in" ? fmtPeriod(g.period)
+           : mode === "post" ? "Final" : "";
+  var lead = (homeScore === null || awayScore === null) ? 0
+           : homeScore > awayScore ? 1 : homeScore < awayScore ? -1 : 0;
+  return '<div class="ghead ' + esc(mode) + '">' +
+    teamChip(away, mode === "pre" ? null : awayScore, lead === -1) +
+    '<span class="gat">@</span>' +
+    teamChip(home, mode === "pre" ? null : homeScore, lead === 1) +
+    (note ? '<span class="gnote' + (live ? " live" : "") + '">' + esc(note) + "</span>" : "") +
+    "</div>";
+}
+
+// A card row is deliberately not a table row: the game's status is already in
+// the header, so the columns collapse to who, where, how many and how much.
+function gameRowHTML(r, side){
+  var key = side + ":" + r.id, open = !!state.open[key];
+  var p = ptsInfo(r, side);
+  var tag = p.mode === "pre" ? '<span class="tag proj">proj</span>'
+          : p.mode === "in" ? '<span class="tag live">live</span>' : "";
+  return '<tr class="row' + (open ? " open" : "") + '" data-id="' + esc(r.id) + '">' +
+    '<td class="name"><span class="caret">&#9656;</span> ' + esc(r.name) +
+      (r.inj ? '<span class="inj">' + esc(r.inj) + "</span>" : "") +
+      (isBoth(r) ? '<span class="both">both sides</span>' : "") + "</td>" +
+    '<td><span class="pos">' + esc(r.pos) + "</span></td>" +
+    '<td><span class="tw">' + esc(r.team) + "</span></td>" +
+    '<td class="num pts">' +
+      (p.val === null ? '<span class="nopts">&mdash;</span>'
+        : '<span class="pv' + (p.mode === "pre" ? " isproj" : "") + '">' + fmtPts(p.val) + "</span>") +
+      (tag ? '<span class="sub">' + tag + "</span>" : "") + "</td>" +
+    '<td class="num"><span class="cnt">' + countOf(r, side) + "</span></td></tr>" +
+    (open ? '<tr class="detailrow">' + detailHTML(r, side, 5) + "</tr>" : "");
+}
+
+function gameSideHTML(rows, side){
+  if(!rows.length) return "";
+  var starts = rows.reduce(function(n, r){ return n + countOf(r, side); }, 0);
+  return '<div class="gside gside-' + side + '">' +
+    '<div class="gside-head"><span class="dot ' + (side === "for" ? "f" : "a") + '"></span>' +
+    (side === "for" ? "For me" : "Against me") +
+    '<span class="gside-sub">' + starts + " start" + (starts === 1 ? "" : "s") + "</span></div>" +
+    '<table class="grid card" data-side="' + side + '"><tbody>' +
+    rows.map(function(r){ return gameRowHTML(r, side); }).join("") +
+    "</tbody></table></div>";
+}
+
+// Same ordering the Status column sorts by: what's on now, then what's next,
+// then what just finished, with byes parked at the end.
+function gameSort(a, b){
+  var pa = STATUS_PIN[a.mode] ? 1 : 0, pb = STATUS_PIN[b.mode] ? 1 : 0;
+  if(pa !== pb) return pa - pb;
+  var c = STATUS_RANK[a.mode] - STATUS_RANK[b.mode];
+  if(c) return c;
+  var t = (a.kickoff || 0) - (b.kickoff || 0);
+  return a.mode === "post" ? -t : t;
+}
+
+function gameGroups(){
+  var buckets = {}, order = [];
+  ["for", "against"].forEach(function(side){
+    visibleRows(side).forEach(function(r){
+      var k = gameKeyOf(r), b = buckets[k];
+      if(!b){
+        b = buckets[k] = {key:k, mode:gameMode(r), kickoff:kickoffOf(r), "for":[], against:[]};
+        order.push(k);
+      }
+      b[side].push(r);
+    });
+  });
+  return order.map(function(k){ return buckets[k]; }).sort(gameSort);
+}
+
+function renderGames(){
+  var games = gameGroups();
+  el("games").innerHTML = games.map(function(g){
+    return '<section class="gcard ' + esc(g.mode) + '">' + gameHeadHTML(g.key, g.mode) +
+      '<div class="gbody">' + gameSideHTML(g["for"], "for") +
+      gameSideHTML(g.against, "against") + "</div></section>";
+  }).join("");
+  el("emptyGames").hidden = games.length > 0;
+}
+
+/* ---------------- modes ---------------- */
+
+/* Three modes, one key each, held for half a second rather than tapped so a
+   stray letter can't flip the page out from under you. Roster and Group by
+   games are two ways of laying out the same week, so they replace each other;
+   TV mode is a skin over whichever of them is up. X drops all of it. */
+var HOLD_MS = 500;
+var holdTimer = null;
+var MODE_KEYS = {r:"roster", g:"game", t:"tv", x:"base"};
+
+function rosterOn(){ return state.view === "roster"; }
+function gameOn(){ return state.view === "game"; }
 
 function typingIn(t){
   if(!t) return false;
@@ -1145,26 +1348,64 @@ function typingIn(t){
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || !!t.isContentEditable;
 }
 
-function renderRosterView(){
-  var on = state.rosterView;
-  document.querySelector(".panes").classList.toggle("roster", on);
-  el("forTitle").textContent = on ? "My roster" : "For me";
-  el("rvBadge").hidden = !on;
-  // Both sides means one table against the other, which Roster view doesn't
-  // have. The chip goes away rather than switching off, so leaving the view
-  // hands back the filter you had.
-  el("bothToggle").hidden = on;
+// A chip that doesn't apply to the view goes away rather than switching off, so
+// leaving the view hands back whatever you had set. Its panel closes with it.
+function showChip(chip, panel, on){
+  el(chip).hidden = !on;
+  if(!on){
+    el(chip).classList.remove("open");
+    if(panel) el(panel).hidden = true;
+  }
 }
 
-function setRosterView(on){
-  if(state.rosterView === on) return;
-  state.rosterView = on;
-  renderRosterView();
-  renderTables();
+function renderModes(){
+  var view = state.view;
+  document.querySelector(".panes").classList.toggle("roster", view === "roster");
+  document.body.classList.toggle("tv", state.tv);
+  el("forTitle").textContent = view === "roster" ? "My roster" : "For me";
+  el("rvBadge").hidden = view !== "roster";
+  // Both sides needs one table against the other; positions have nothing to say
+  // once the games are doing the grouping.
+  showChip("bothToggle", null, view === "base");
+  showChip("posToggle", "posFilter", view !== "game");
+  showChip("statusToggle", "statusFilter", view !== "game");
+  showChip("gameToggle", "gameFilter", view === "game");
+  el("games").hidden = view !== "game";
+  document.querySelector(".panes").hidden = view === "game";
+  el("emptyGames").hidden = true;
+}
+
+function renderChips(){
+  if(renderPosFilter) renderPosFilter();
+  if(renderStatusFilter) renderStatusFilter();
+  if(renderGameFilter) renderGameFilter();
+  renderBothToggle();
+}
+
+function renderBody(){
+  renderModes();
+  renderChips();
+  if(state.view === "game") renderGames();
+  else renderTables();
+}
+
+/* Each key owns one thing and toggles only that, so T drops TV mode and leaves
+   the view underneath it alone (G, T, T lands back on the cards). X is the only
+   one that clears everything. */
+function toggleMode(mode){
+  if(mode === "base"){
+    state.view = "base";
+    state.tv = false;
+  } else if(mode === "tv"){
+    state.tv = !state.tv;
+  } else {
+    state.view = state.view === mode ? "base" : mode;
+  }
+  renderBody();
 }
 
 function cancelHold(){
-  if(rvTimer){ clearTimeout(rvTimer); rvTimer = null; }
+  if(holdTimer){ clearTimeout(holdTimer); holdTimer = null; }
 }
 
 // The league a player's Pts come from: highest in the order that's still
@@ -1219,8 +1460,7 @@ function renderBothToggle(){
 // recomputed together whenever it changes.
 function refreshFiltered(){
   renderLeagueFilter();
-  renderBothToggle();
-  renderTables();
+  renderBody();
 }
 
 function setLeagueIncluded(id, on){
@@ -1234,7 +1474,7 @@ function moveLeague(id, delta){
   var to = from + delta;
   if(from < 0 || to < 0 || to >= state.leagueOrder.length) return;
   state.leagueOrder.splice(to, 0, state.leagueOrder.splice(from, 1)[0]);
-  rebuildOrderIndex(); saveOrder(); renderLeagueFilter(); renderTables();
+  rebuildOrderIndex(); saveOrder(); renderLeagueFilter(); renderBody();
 }
 function placeLeague(id, beforeId){
   if(id === beforeId) return;
@@ -1243,7 +1483,7 @@ function placeLeague(id, beforeId){
   if(at < 0) at = order.length;
   order.splice(at, 0, id);
   state.leagueOrder = order;
-  rebuildOrderIndex(); saveOrder(); renderLeagueFilter(); renderTables();
+  rebuildOrderIndex(); saveOrder(); renderLeagueFilter(); renderBody();
 }
 
 function renderEspnConfig(){
@@ -1305,11 +1545,8 @@ function renderUpdated(){
 
 function renderAll(m){
   if(m) renderFooter(m);
-  renderPosFilter();
-  renderStatusFilter();
   renderLeagueFilter();
-  renderBothToggle();
-  renderTables();
+  renderBody();
   renderUpdated();
   results.classList.add("on");
 }
@@ -1372,23 +1609,34 @@ function wire(){
     });
   });
 
-  el("search").addEventListener("input", function(e){ state.search = e.target.value; renderTables(); });
+  el("search").addEventListener("input", function(e){ state.search = e.target.value; renderBody(); });
 
   document.addEventListener("keydown", function(e){
-    if(e.key !== "r" && e.key !== "R") return;
+    var mode = MODE_KEYS[String(e.key).toLowerCase()];
+    if(!mode) return;
     // e.repeat fires for the whole hold, so only the first keydown starts a timer.
     if(e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
-    if(rvTimer || typingIn(e.target) || !results.classList.contains("on")) return;
-    rvTimer = setTimeout(function(){
-      rvTimer = null;
-      setRosterView(!state.rosterView);
-    }, RV_HOLD);
+    if(holdTimer || typingIn(e.target) || !results.classList.contains("on")) return;
+    holdTimer = setTimeout(function(){
+      holdTimer = null;
+      toggleMode(mode);
+    }, HOLD_MS);
   });
   document.addEventListener("keyup", function(e){
     // Releasing shift first turns "R" back into "r" mid-hold, so both count.
-    if(e.key === "r" || e.key === "R") cancelHold();
+    if(MODE_KEYS[String(e.key).toLowerCase()]) cancelHold();
   });
   window.addEventListener("blur", cancelHold);
+
+  // Cards are rebuilt on every render, so the click lives on the container.
+  el("games").addEventListener("click", function(e){
+    var tr = e.target.closest("tr.row");
+    if(!tr) return;
+    var table = tr.closest("table.grid");
+    var key = table.getAttribute("data-side") + ":" + tr.getAttribute("data-id");
+    state.open[key] = !state.open[key];
+    renderGames();
+  });
 
   renderPosFilter = multiFilter({
     toggle:"posToggle", panel:"posFilter", list:"pfList", all:"pfAll", none:"pfNone",
@@ -1405,11 +1653,12 @@ function wire(){
     key:"statusOff", title:"Status", maxNames:2, items:statusList,
     label:function(v){ return STATUS_LABEL[v]; }
   });
+  renderGameFilter = gameFilter();
 
   el("groupToggle").addEventListener("click", function(){
     state.group = !state.group;
     this.classList.toggle("on", state.group);
-    renderTables();
+    renderBody();
   });
 
   // Fold the load bar away once the tables are up. Always starts open, and the
@@ -1476,7 +1725,7 @@ function wire(){
   el("bothToggle").addEventListener("click", function(){
     state.bothOnly = !state.bothOnly;
     this.classList.toggle("on", state.bothOnly);
-    renderTables();
+    renderBody();
   });
 
   el("expandAll").addEventListener("click", function(){
@@ -1485,7 +1734,7 @@ function wire(){
     var anyClosed = all.some(function(k){ return !state.open[k]; });
     all.forEach(function(k){ state.open[k] = anyClosed; });
     this.textContent = anyClosed ? "Collapse all" : "Expand all";
-    renderTables();
+    renderBody();
   });
 
   el("espnAdd").addEventListener("click", function(){ addEspnLeague(el("espnId").value); });
