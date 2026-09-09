@@ -284,7 +284,12 @@ favicon.svg           football icon (favicon.png / apple-touch-icon.png are rast
 
 ## To do
 
-Nothing queued.
+- **A way into the modes on a phone.** Roster view, Group by games and TV mode are held keys and
+  nothing else, so on a touch screen there is no way to reach any of them. Whatever replaces the
+  keys has to stay out of the way on a desktop, where holding a key is the point.
+- **Lay the tables out for a small screen.** Below 900px the two panes already stack and the game
+  cards drop to one column, but that is the whole of it. The tables scroll sideways, the filter
+  chips wrap into several rows, and TV mode scales type up on a screen that has none to spare.
 
 ## Notes
 
